@@ -1,0 +1,28 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Fallback tokens. ThemeProvider overwrites these per tenant on load, so a
+   store never flashes the wrong brand colour for more than one frame. */
+:root {
+  --brand-primary: 17 24 39;
+  --brand-secondary: 107 114 128;
+  --font-body: 'Inter';
+  --font-heading: 'Inter';
+}
+
+@layer base {
+  body {
+    @apply bg-white text-ink-900 font-sans antialiased;
+  }
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand ring-offset-2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

@@ -1,0 +1,288 @@
+import { useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { ArrowLeft } from 'lucide-react';
+import { orderService } from '@/services/admin.service';
+import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
+import { StatusBadge } from '@/components/admin/DataTable';
+import { Field, FormError, Modal, Textarea } from '@/components/admin/Modal';
+import { formatMoney } from '@/utils/format';
+
+/**
+ * Mirrors the server's transition table. The server is still the authority — it
+ * returns INVALID_STATUS_TRANSITION either way — but offering only the moves
+ * that can succeed is kinder than a button that always errors.
+ */
+const NEXT_STATUS: Record<string, string[]> = {
+  PENDING: ['CONFIRMED', 'CANCELLED'],
+  CONFIRMED: ['PROCESSING', 'CANCELLED'],
+  PROCESSING: ['PACKED', 'CANCELLED'],
+  PACKED: ['SHIPPED', 'CANCELLED'],
+  SHIPPED: ['DELIVERED'],
+  DELIVERED: ['REFUNDED'],
+  CANCELLED: [],
+  REFUNDED: [],
+};
+
+export default function OrderDetail() {
+  const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [cancelling, setCancelling] = useState(false);
+  const [reason, setReason] = useState('');
+
+  const query = useQuery({
+    queryKey: ['admin-order', id],
+    queryFn: () => orderService.get(id!),
+    enabled: Boolean(id),
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ['admin-order', id] });
+    queryClient.invalidateQueries({ queryKey: ['admin-orders'] });
+  };
+
+  const advance = useMutation({
+    mutationFn: (status: string) => orderService.setStatus(id!, status),
+    onSuccess: invalidate,
+  });
+
+  const cancel = useMutation({
+    mutationFn: () => orderService.setStatus(id!, 'CANCELLED', reason || undefined),
+    onSuccess: () => {
+      setCancelling(false);
+      setReason('');
+      invalidate();
+    },
+  });
+
+  const collect = useMutation({
+    mutationFn: () => orderService.markCollected(id!),
+    onSuccess: invalidate,
+  });
+
+  if (query.isLoading) {
+    return <Page title="Order"><p className="text-sm text-ink-500">Loading…</p></Page>;
+  }
+
+  if (query.isError || !query.data) {
+    return (
+      <Page title="Order">
+        <p className="text-sm text-ink-700">That order couldn't be loaded.</p>
+        <Link to="/admin/orders" className="mt-3 inline-block text-sm underline">
+          Back to orders
+        </Link>
+      </Page>
+    );
+  }
+
+  const order = query.data;
+  const moves = NEXT_STATUS[order.status] ?? [];
+  const forward = moves.filter((m) => m !== 'CANCELLED');
+  const canCancel = moves.includes('CANCELLED');
+  const codOutstanding =
+    order.paymentStatus !== 'PAID' && order.payments.some((p) => p.provider === 'COD');
+
+  return (
+    <Page
+      title={order.orderNumber}
+      subtitle={`Placed ${new Date(order.placedAt).toLocaleString()} · ${order.customerEmail}`}
+      action={
+        <button
+          onClick={() => navigate('/admin/orders')}
+          className="flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-900"
+        >
+          <ArrowLeft size={15} /> All orders
+        </button>
+      }
+    >
+      <div className="flex flex-wrap items-center gap-3">
+        <StatusBadge value={order.status} />
+        <StatusBadge value={order.paymentStatus} />
+        {order.cancelReason && (
+          <span className="text-sm text-ink-500">Reason: {order.cancelReason}</span>
+        )}
+      </div>
+
+      {/* Fulfilment is the whole job on this screen, so the actions sit first. */}
+      <div className="mt-5 flex flex-wrap gap-3">
+        {forward.map((status) => (
+          <PrimaryButton
+            key={status}
+            disabled={advance.isPending}
+            onClick={() => advance.mutate(status)}
+          >
+            Mark {status.toLowerCase()}
+          </PrimaryButton>
+        ))}
+
+        {codOutstanding && (
+          <SecondaryButton disabled={collect.isPending} onClick={() => collect.mutate()}>
+            Record cash collected
+          </SecondaryButton>
+        )}
+
+        {canCancel && (
+          <button
+            onClick={() => setCancelling(true)}
+            className="rounded-card border border-red-200 px-3 py-1.5 text-sm text-red-700"
+          >
+            Cancel order
+          </button>
+        )}
+
+        {moves.length === 0 && (
+          <p className="text-sm text-ink-500">
+            This order is {order.status.toLowerCase()} and cannot move further.
+          </p>
+        )}
+      </div>
+
+      <FormError error={advance.error ?? collect.error} />
+
+      <div className="mt-8 grid gap-6 lg:grid-cols-[1fr_20rem]">
+        <div className="rounded-card border border-ink-100 bg-white">
+          <table className="w-full text-left text-sm">
+            <thead className="border-b border-ink-100 text-xs uppercase tracking-wide text-ink-500">
+              <tr>
+                <th className="px-4 py-3 font-medium">Item</th>
+                <th className="px-4 py-3 font-medium">Qty</th>
+                <th className="px-4 py-3 font-medium">Unit</th>
+                <th className="px-4 py-3 font-medium">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {order.items.map((item) => (
+                <tr key={item.id} className="border-b border-ink-50 last:border-0">
+                  <td className="px-4 py-3">
+                    <span className="text-ink-900">{item.productName}</span>
+                    {item.variantName && (
+                      <span className="text-ink-500"> · {item.variantName}</span>
+                    )}
+                    <span className="block font-mono text-xs text-ink-500">{item.sku}</span>
+                  </td>
+                  <td className="px-4 py-3 text-ink-700">{item.quantity}</td>
+                  <td className="px-4 py-3 text-ink-700">
+                    {formatMoney(item.unitPrice, order.currency)}
+                  </td>
+                  <td className="px-4 py-3 font-medium text-ink-950">
+                    {formatMoney(item.lineTotal, order.currency)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="space-y-6">
+          <section className="rounded-card border border-ink-100 bg-white p-5">
+            <h2 className="text-sm font-medium text-ink-950">Totals</h2>
+            <dl className="mt-3 space-y-2 text-sm">
+              <Row label="Subtotal" value={formatMoney(order.subtotal, order.currency)} />
+              {Number(order.discountTotal) > 0 && (
+                <Row
+                  label={order.couponCode ? `Discount (${order.couponCode})` : 'Discount'}
+                  value={`−${formatMoney(order.discountTotal, order.currency)}`}
+                />
+              )}
+              <Row label="Tax" value={formatMoney(order.taxTotal, order.currency)} />
+              <Row label="Shipping" value={formatMoney(order.shippingTotal, order.currency)} />
+              <div className="flex justify-between border-t border-ink-100 pt-2 font-medium text-ink-950">
+                <dt>Total</dt>
+                <dd>{formatMoney(order.grandTotal, order.currency)}</dd>
+              </div>
+            </dl>
+          </section>
+
+          <section className="rounded-card border border-ink-100 bg-white p-5">
+            <h2 className="text-sm font-medium text-ink-950">Delivering to</h2>
+            <address className="mt-2 text-sm not-italic leading-relaxed text-ink-700">
+              {order.shippingAddress.fullName}
+              <br />
+              {order.shippingAddress.line1}
+              {order.shippingAddress.line2 && (
+                <>
+                  <br />
+                  {order.shippingAddress.line2}
+                </>
+              )}
+              <br />
+              {order.shippingAddress.city}, {order.shippingAddress.state}{' '}
+              {order.shippingAddress.postalCode}
+              <br />
+              {order.shippingAddress.country}
+              {order.customerPhone && (
+                <>
+                  <br />
+                  {order.customerPhone}
+                </>
+              )}
+            </address>
+          </section>
+
+          <section className="rounded-card border border-ink-100 bg-white p-5">
+            <h2 className="text-sm font-medium text-ink-950">Payments</h2>
+            {order.payments.length === 0 ? (
+              <p className="mt-2 text-sm text-ink-500">No payment attempts recorded.</p>
+            ) : (
+              <ul className="mt-3 space-y-2 text-sm">
+                {order.payments.map((p) => (
+                  <li key={p.id} className="flex items-center justify-between gap-2">
+                    <span className="text-ink-700">{p.provider}</span>
+                    <StatusBadge value={p.status} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          {order.notes && (
+            <section className="rounded-card border border-ink-100 bg-white p-5">
+              <h2 className="text-sm font-medium text-ink-950">Customer note</h2>
+              <p className="mt-2 text-sm text-ink-700">{order.notes}</p>
+            </section>
+          )}
+        </div>
+      </div>
+
+      {cancelling && (
+        <Modal
+          title="Cancel this order?"
+          onClose={() => setCancelling(false)}
+          footer={
+            <>
+              <SecondaryButton onClick={() => setCancelling(false)}>Keep it</SecondaryButton>
+              <button
+                onClick={() => cancel.mutate()}
+                disabled={cancel.isPending}
+                className="rounded-card bg-red-600 px-4 py-2 text-sm font-medium text-white disabled:opacity-40"
+              >
+                {cancel.isPending ? 'Cancelling…' : 'Cancel order'}
+              </button>
+            </>
+          }
+        >
+          <p className="text-sm text-ink-700">
+            The items go back into stock and any coupon the customer used is released. This cannot
+            be undone.
+          </p>
+          <div className="mt-4">
+            <Field label="Reason (optional, shown on the order)">
+              <Textarea rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
+            </Field>
+          </div>
+          <FormError error={cancel.error} />
+        </Modal>
+      )}
+    </Page>
+  );
+}
+
+function Row({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between">
+      <dt className="text-ink-500">{label}</dt>
+      <dd className="text-ink-900">{value}</dd>
+    </div>
+  );
+}

@@ -1,0 +1,53 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ecommerce
+    ports: ['5432:5432']
+    volumes: ['pgdata:/var/lib/postgresql/data']
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U postgres']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --save 60 1 --loglevel warning
+    ports: ['6379:6379']
+    volumes: ['redisdata:/data']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  backend:
+    build: ./ecommerce-backend
+    env_file: ./ecommerce-backend/.env
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ecommerce?schema=public
+      REDIS_URL: redis://redis:6379
+    ports: ['4000:4000']
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    # Migrations run on start so a fresh clone comes up working.
+    command: sh -c "npx prisma migrate deploy && node dist/main"
+
+  frontend:
+    build:
+      context: ./ecommerce-frontend
+      args:
+        # {host} resolves to the browser's hostname at runtime, so a storefront
+        # request reaches the API on the tenant's own hostname.
+        VITE_API_URL: http://{host}:4000/api/v1
+        VITE_STORE_DOMAIN: platform.localhost
+    ports: ['5173:80']
+    depends_on: [backend]
+
+volumes:
+  pgdata:
+  redisdata:
