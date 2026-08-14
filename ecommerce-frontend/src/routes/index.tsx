@@ -4,6 +4,7 @@ import { RequireAuth } from './guards';
 import { ThemeProvider } from '@/features/theme/ThemeProvider';
 import { StorefrontLayout } from '@/layouts/StorefrontLayout';
 import { AdminLayout } from '@/layouts/AdminLayout';
+import { PlatformLayout } from '@/layouts/PlatformLayout';
 
 const Home = lazy(() => import('@/pages/storefront/Home'));
 const ProductDetail = lazy(() => import('@/pages/storefront/ProductDetail'));
@@ -11,6 +12,8 @@ const Shop = lazy(() => import('@/pages/storefront/Shop'));
 const CategoryPage = lazy(() => import('@/pages/storefront/CategoryPage'));
 const SignIn = lazy(() => import('@/pages/storefront/SignIn'));
 const Account = lazy(() => import('@/pages/storefront/Account'));
+const Wishlist = lazy(() => import('@/pages/storefront/Wishlist'));
+const CmsPage = lazy(() => import('@/pages/storefront/CmsPage'));
 const Cart = lazy(() => import('@/pages/storefront/Cart'));
 const Checkout = lazy(() => import('@/pages/storefront/Checkout'));
 const OrderConfirmation = lazy(() => import('@/pages/storefront/OrderConfirmation'));
@@ -27,6 +30,15 @@ const AdminInventory = lazy(() => import('@/pages/admin/Inventory'));
 const AdminNotifications = lazy(() => import('@/pages/admin/Notifications'));
 const AdminAppearance = lazy(() => import('@/pages/admin/Appearance'));
 const AdminReviews = lazy(() => import('@/pages/admin/Reviews'));
+const AdminCustomers = lazy(() => import('@/pages/admin/Customers'));
+const AdminCustomerDetail = lazy(() => import('@/pages/admin/CustomerDetail'));
+const AdminSettings = lazy(() => import('@/pages/admin/Settings'));
+const AdminAnalytics = lazy(() => import('@/pages/admin/Analytics'));
+const AdminPages = lazy(() => import('@/pages/admin/Pages'));
+const PlatformOverview = lazy(() => import('@/pages/platform/Overview'));
+const PlatformTenants = lazy(() => import('@/pages/platform/Tenants'));
+const PlatformPlans = lazy(() => import('@/pages/platform/Plans'));
+const PlatformAudit = lazy(() => import('@/pages/platform/AuditLog'));
 
 const Loading = () => <div className="p-10 text-sm text-ink-500">Loading…</div>;
 const wrap = (el: JSX.Element) => <Suspense fallback={<Loading />}>{el}</Suspense>;
@@ -56,9 +68,14 @@ export const router = createBrowserRouter([
       { path: 'category/:slug', element: wrap(<CategoryPage />) },
       { path: 'account/sign-in', element: wrap(<SignIn />) },
       { path: 'account', element: wrap(<Account />) },
+      { path: 'wishlist', element: wrap(<Wishlist />) },
       { path: 'cart', element: wrap(<Cart />) },
       { path: 'checkout', element: wrap(<Checkout />) },
       { path: 'order/:orderNumber', element: wrap(<OrderConfirmation />) },
+      // Last in the storefront tree: a tenant page claims any remaining
+      // single-segment address, so it must not shadow a built-in route. The
+      // API refuses reserved slugs for the same reason.
+      { path: ':slug', element: wrap(<CmsPage />) },
     ],
   },
   { path: '/login', element: wrap(<Login />) },
@@ -82,6 +99,28 @@ export const router = createBrowserRouter([
           { path: 'notifications', element: wrap(<AdminNotifications />) },
           { path: 'theme', element: wrap(<AdminAppearance />) },
           { path: 'reviews', element: wrap(<AdminReviews />) },
+          { path: 'customers', element: wrap(<AdminCustomers />) },
+          { path: 'customers/:id', element: wrap(<AdminCustomerDetail />) },
+          { path: 'analytics', element: wrap(<AdminAnalytics />) },
+          { path: 'settings', element: wrap(<AdminSettings />) },
+          { path: 'pages', element: wrap(<AdminPages />) },
+        ],
+      },
+    ],
+  },
+  {
+    // Only a super admin gets here; the guard checks the role and the API
+    // refuses every platform route for anyone else regardless.
+    path: '/platform',
+    element: <RequireAuth roles={['SUPER_ADMIN']} />,
+    children: [
+      {
+        element: <PlatformLayout />,
+        children: [
+          { index: true, element: wrap(<PlatformOverview />) },
+          { path: 'tenants', element: wrap(<PlatformTenants />) },
+          { path: 'plans', element: wrap(<PlatformPlans />) },
+          { path: 'audit', element: wrap(<PlatformAudit />) },
         ],
       },
     ],

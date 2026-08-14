@@ -19,6 +19,7 @@ export const PERMISSIONS = {
   SHIPPING_READ: 'shipping.read',
   SHIPPING_WRITE: 'shipping.write',
   THEME_UPDATE: 'theme.update',
+  PAGES_WRITE: 'pages.write',
   REVIEWS_MODERATE: 'reviews.moderate',
   ANALYTICS_READ: 'analytics.read',
   SETTINGS_READ: 'settings.read',

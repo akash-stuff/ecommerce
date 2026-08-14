@@ -76,8 +76,9 @@ Interfaces exist so a second implementation doesn't require rewriting callers:
   later.
 - **Notifications** — channel interface with email first; SMS and WhatsApp
   implement the same contract.
-- **Search** — Postgres `ILIKE` and trigram indexes now, behind a service
-  boundary so Elasticsearch can replace the implementation.
+- **Search** — Postgres `ILIKE` today, behind a service boundary so trigram
+  indexes or Elasticsearch can replace the implementation. No trigram index
+  exists yet; see STATUS.md section 22.
 
 ## Templates vs themes
 

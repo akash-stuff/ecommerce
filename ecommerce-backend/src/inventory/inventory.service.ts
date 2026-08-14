@@ -2,6 +2,7 @@ import { ConflictException, Injectable, NotFoundException } from '@nestjs/common
 import { InventoryReason, Prisma } from '@prisma/client';
 import { PrismaService, ScopedTransactionClient } from '../common/prisma/prisma.service';
 import { RequestContextStore } from '../common/context/request-context';
+import { AuditService } from '../audit/audit.service';
 import { paginate, PaginatedResult } from '../common/dto/pagination.dto';
 import { AdjustStockDto, InventoryQueryDto } from './dto/inventory.dto';
 
@@ -26,7 +27,10 @@ export interface StockLine {
  */
 @Injectable()
 export class InventoryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   async history(query: InventoryQueryDto): Promise<PaginatedResult<unknown>> {
     const where: Prisma.InventoryTransactionWhereInput = {
@@ -54,7 +58,7 @@ export class InventoryService {
 
   /** Manual correction from the admin: stock counts, damage, supplier intake. */
   async adjust(dto: AdjustStockDto) {
-    return this.prisma.db.$transaction((tx) =>
+    const result = await this.prisma.db.$transaction((tx) =>
       this.applyDelta(tx, {
         productId: dto.productId,
         variantId: dto.variantId ?? null,
@@ -64,6 +68,27 @@ export class InventoryService {
         note: dto.note ?? null,
       }),
     );
+
+    /**
+     * Recorded only after the adjustment succeeds. Logging the intent up front
+     * would leave entries for adjustments that were refused for insufficient
+     * stock — an audit trail that disagrees with the ledger beside it.
+     *
+     * The ledger records what changed; this records who asked for it.
+     */
+    void this.audit.record({
+      action: 'inventory.adjusted',
+      entityType: 'Product',
+      entityId: dto.productId,
+      changes: {
+        delta: dto.quantityDelta,
+        stockAfter: result.stockAfter,
+        reason: dto.reason,
+        note: dto.note ?? null,
+      },
+    });
+
+    return result;
   }
 
   /**

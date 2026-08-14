@@ -29,6 +29,28 @@ export class PaginationQueryDto {
   }
 }
 
+/**
+ * Turns a client-supplied sort field into one Prisma will accept.
+ *
+ * `sortBy` is free text on the wire, and passing it straight into
+ * `orderBy: { [sortBy]: order }` hands the caller a choice of column — an
+ * unknown name makes Prisma throw, so `/shop?sort=nonsense` becomes a 500 that
+ * any visitor can trigger. Each list endpoint declares what it can sort by and
+ * anything else falls back to the default.
+ */
+export function safeOrderBy<T extends string>(
+  requested: string | undefined,
+  allowed: readonly T[],
+  fallback: T,
+  order: 'asc' | 'desc' = 'desc',
+): Record<string, 'asc' | 'desc'> {
+  const field = (allowed as readonly string[]).includes(requested ?? '')
+    ? (requested as T)
+    : fallback;
+
+  return { [field]: order };
+}
+
 export interface PaginatedResult<T> {
   items: T[];
   meta: {

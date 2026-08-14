@@ -3,6 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { productService } from '@/services/store.service';
 import { categoryService } from '@/services/admin.service';
+import { apiClient, unwrap } from '@/services/api-client';
 import { useStore } from '@/features/theme/ThemeProvider';
 import { formatMoney } from '@/utils/format';
 import type { CategoryNode, Product } from '@/types/api';
@@ -29,6 +30,10 @@ export default function Shop({ categorySlug }: { categorySlug?: string }) {
   const search = params.get('q') ?? '';
   const sort = params.get('sort') ?? 'createdAt:desc';
   const [sortBy, sortOrder] = sort.split(':');
+  // Filters live in the URL alongside the rest, so a filtered view is linkable.
+  const minPrice = params.get('min') ?? '';
+  const maxPrice = params.get('max') ?? '';
+  const inStockOnly = params.get('inStock') === '1';
 
   const tree = useQuery({ queryKey: ['storefront-categories'], queryFn: categoryService.tree });
 
@@ -37,8 +42,24 @@ export default function Shop({ categorySlug }: { categorySlug?: string }) {
     [tree.data, categorySlug],
   );
 
+  const facets = useQuery({
+    queryKey: ['facets', search, activeCategory?.id ?? null, minPrice, maxPrice, inStockOnly],
+    queryFn: () =>
+      unwrap<Facets>(
+        apiClient.get('/products/facets', {
+          params: {
+            search: search || undefined,
+            categoryId: activeCategory?.id,
+            minPrice: minPrice || undefined,
+            maxPrice: maxPrice || undefined,
+          },
+        }),
+      ),
+    enabled: !categorySlug || Boolean(activeCategory) || tree.isError,
+  });
+
   const products = useQuery({
-    queryKey: ['shop', page, search, sort, activeCategory?.id ?? null, categorySlug],
+    queryKey: ['shop', page, search, sort, activeCategory?.id ?? null, categorySlug, minPrice, maxPrice, inStockOnly],
     // A category route must not fall back to "everything" while the tree loads,
     // or the shopper sees the whole catalogue flash past before it narrows.
     enabled: !categorySlug || Boolean(activeCategory) || tree.isError,
@@ -51,6 +72,9 @@ export default function Shop({ categorySlug }: { categorySlug?: string }) {
         sortOrder,
         search: search || undefined,
         categoryId: activeCategory?.id,
+        minPrice: minPrice || undefined,
+        maxPrice: maxPrice || undefined,
+        inStock: inStockOnly || undefined,
       }),
     placeholderData: (previous) => previous,
   });
@@ -120,7 +144,10 @@ export default function Shop({ categorySlug }: { categorySlug?: string }) {
                       : 'text-ink-700 hover:text-brand'
                   }
                 >
-                  {node.name}
+                  {node.name}{' '}
+                  <span className="text-xs text-ink-300">
+                    {facetCount(facets.data, node.id)}
+                  </span>
                 </Link>
                 {node.children.length > 0 && (
                   <ul className="ml-3 mt-1 space-y-1">
@@ -143,6 +170,71 @@ export default function Shop({ categorySlug }: { categorySlug?: string }) {
               </li>
             ))}
           </ul>
+          {facets.data && (
+            <>
+              <h2 className="mt-8 text-sm font-medium text-ink-950">Price</h2>
+              <div className="mt-3 flex items-center gap-2">
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={minPrice}
+                  placeholder={String(Math.floor(Number(facets.data.price.min)))}
+                  onChange={(e) => update({ min: e.target.value })}
+                  aria-label="Minimum price"
+                  className="w-full min-w-0 rounded-card border border-ink-300 px-2 py-1.5 text-sm"
+                />
+                <span className="text-xs text-ink-500">to</span>
+                <input
+                  type="number"
+                  inputMode="numeric"
+                  value={maxPrice}
+                  placeholder={String(Math.ceil(Number(facets.data.price.max)))}
+                  onChange={(e) => update({ max: e.target.value })}
+                  aria-label="Maximum price"
+                  className="w-full min-w-0 rounded-card border border-ink-300 px-2 py-1.5 text-sm"
+                />
+              </div>
+
+              <h2 className="mt-8 text-sm font-medium text-ink-950">Availability</h2>
+              <label className="mt-3 flex items-center gap-2 text-sm text-ink-700">
+                <input
+                  type="checkbox"
+                  checked={inStockOnly}
+                  onChange={(e) => update({ inStock: e.target.checked ? '1' : null })}
+                  className="h-4 w-4 rounded border-ink-300"
+                />
+                In stock ({facets.data.availability.inStock})
+              </label>
+
+              {facets.data.brands.length > 0 && (
+                <>
+                  <h2 className="mt-8 text-sm font-medium text-ink-950">Brand</h2>
+                  <ul className="mt-3 space-y-1.5 text-sm">
+                    {facets.data.brands.map((brand) => (
+                      <li key={brand.id}>
+                        <button
+                          onClick={() => update({ brand: brand.id })}
+                          className="text-ink-700 hover:text-brand"
+                        >
+                          {brand.name}{' '}
+                          <span className="text-xs text-ink-300">({brand.count})</span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </>
+              )}
+
+              {(minPrice || maxPrice || inStockOnly) && (
+                <button
+                  onClick={() => update({ min: null, max: null, inStock: null })}
+                  className="mt-6 text-xs text-ink-500 underline"
+                >
+                  Clear filters
+                </button>
+              )}
+            </>
+          )}
         </aside>
 
         <div>
@@ -246,6 +338,28 @@ function Card({ product, currency }: { product: Product; currency: string }) {
       {product.stock === 0 && <p className="mt-1 text-xs text-red-600">Out of stock</p>}
     </Link>
   );
+}
+
+interface Facets {
+  categories: { id: string; name: string; slug: string; count: number }[];
+  brands: { id: string; name: string; count: number }[];
+  price: { min: string; max: string };
+  availability: { inStock: number; outOfStock: number };
+  total: number;
+}
+
+/**
+ * Two different absences, told apart.
+ *
+ * Before the counts load there is no number to show, so nothing is shown. Once
+ * they have loaded, a category missing from the response genuinely has no
+ * matches under the current filters, and "(0)" says that — which is what tells
+ * a shopper the filter is why the category looks empty.
+ */
+function facetCount(facets: Facets | undefined, categoryId: string): string {
+  if (!facets) return '';
+  const hit = facets.categories.find((c) => c.id === categoryId);
+  return `(${hit?.count ?? 0})`;
 }
 
 function findBySlug(nodes: CategoryNode[], slug: string): CategoryNode | null {

@@ -3,6 +3,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ProductsService } from './products.service';
+import { FacetsService } from './facets.service';
 import { Public, RequirePermissions } from '../common/decorators';
 import { PERMISSIONS } from '../common/rbac/permissions';
 import {
@@ -13,13 +14,27 @@ import {
 @ApiBearerAuth()
 @Controller('products')
 export class ProductsController {
-  constructor(private readonly products: ProductsService) {}
+  constructor(
+    private readonly products: ProductsService,
+    private readonly facets: FacetsService,
+  ) {}
 
   @Public()
   @Get()
   @ApiOperation({ summary: 'List products for the current store' })
   findAll(@Query() query: ProductQueryDto) {
     return this.products.findAll(query);
+  }
+
+  /**
+   * Counts for the filters not yet applied. Placed before `slug/:slug` and
+   * `:id` so "facets" is never parsed as a slug or a UUID.
+   */
+  @Public()
+  @Get('facets')
+  @ApiOperation({ summary: 'Filter counts for the current search' })
+  getFacets(@Query() query: ProductQueryDto) {
+    return this.facets.compute(query);
   }
 
   @Public()

@@ -1,27 +1,14 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { RouterProvider } from 'react-router-dom';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { router } from './routes';
 import { onSessionExpiredHandler } from './services/api-client';
 import { useAuthStore } from './store/auth.store';
 import { useCustomerStore } from './store/customer.store';
 import { isAdminHost } from './config/env';
+import { queryClient } from './lib/query-client';
 import './index.css';
-
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: (failureCount, error) => {
-        const status = (error as { status?: number }).status ?? 0;
-        if (status >= 400 && status < 500) return false; // don't retry 4xx
-        return failureCount < 2;
-      },
-      staleTime: 30_000,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
 
 onSessionExpiredHandler(() => {
   useAuthStore.setState({ user: null, status: 'unauthenticated' });

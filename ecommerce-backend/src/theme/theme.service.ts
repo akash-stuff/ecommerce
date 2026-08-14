@@ -2,11 +2,15 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { sanitiseCustomCss } from './css-sanitiser';
+import { AuditService } from '../audit/audit.service';
 import { UpdateStorefrontDto, UpdateThemeDto } from './dto/theme.dto';
 
 @Injectable()
 export class ThemeService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly audit: AuditService,
+  ) {}
 
   /** The editable theme, including the raw custom CSS the owner typed. */
   async get() {
@@ -70,6 +74,13 @@ export class ThemeService {
 
       data.customCss = css || null;
     }
+
+    void this.audit.record({
+      action: 'theme.updated',
+      entityType: 'Theme',
+      entityId: store.id,
+      changes: { fields: Object.keys(dto) },
+    });
 
     // A store may predate its theme row, so upsert rather than assume.
     if (!store.theme) {

@@ -31,6 +31,17 @@ export const TENANT_OPTIONAL_KEY = 'tenantOptional';
  */
 export const TenantOptional = () => SetMetadata(TENANT_OPTIONAL_KEY, true);
 
+export const SKIP_RESPONSE_WRAP_KEY = 'skipResponseWrap';
+/**
+ * Return the handler's value as the body, unwrapped.
+ *
+ * Everything else is wrapped as `{ success, data }`, which is right for an API
+ * client and wrong for anything that is not JSON — a sitemap, robots.txt, a CSV
+ * export. A crawler asking for XML must not receive a JSON envelope containing
+ * XML as a string.
+ */
+export const SkipResponseWrap = () => SetMetadata(SKIP_RESPONSE_WRAP_KEY, true);
+
 /** The authenticated actor, straight from the async context. */
 export const CurrentUser = createParamDecorator((_: unknown, __: ExecutionContext) => {
   const ctx = RequestContextStore.get();

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { refreshSession } from '@/services/api-client';
 import { customerService, type CustomerProfile } from '@/services/customer.service';
 import { cartService } from '@/services/cart.service';
+import { clearCustomerScopedQueries } from '@/lib/query-client';
 
 interface CustomerState {
   customer: CustomerProfile | null;
@@ -34,6 +35,7 @@ export const useCustomerStore = create<CustomerState>()((set) => ({
       // Fold the guest cart in before the profile loads, so the header badge
       // never briefly shows an empty cart the shopper just filled.
       await cartService.merge().catch(() => undefined);
+      clearCustomerScopedQueries();
       set({ customer: await customerService.me(), status: 'authenticated' });
     } catch (e) {
       set({ customer: null, status: 'guest' });
@@ -46,6 +48,7 @@ export const useCustomerStore = create<CustomerState>()((set) => ({
     try {
       await customerService.register(payload);
       await cartService.merge().catch(() => undefined);
+      clearCustomerScopedQueries();
       set({ customer: await customerService.me(), status: 'authenticated' });
     } catch (e) {
       set({ customer: null, status: 'guest' });
@@ -55,6 +58,7 @@ export const useCustomerStore = create<CustomerState>()((set) => ({
 
   signOut: async () => {
     await customerService.logout();
+    clearCustomerScopedQueries();
     set({ customer: null, status: 'guest' });
   },
 

@@ -3,5 +3,7 @@
   "rootDir": "..",
   "testEnvironment": "node",
   "testRegex": ".e2e-spec.ts$",
-  "transform": { "^.+\\.ts$": "ts-jest" }
+  "transform": { "^.+\\.ts$": "ts-jest" },
+  "//": "beforeAll boots the whole Nest app, hashes three argon2 passwords (~100ms each by design) and seeds two tenants. Jest's 5s default is for unit tests and leaves no headroom for a cold database connection.",
+  "testTimeout": 60000
 }

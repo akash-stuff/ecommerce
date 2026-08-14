@@ -1,7 +1,9 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, ProductStatus } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
-import { paginate, PaginatedResult } from '../common/dto/pagination.dto';
+import { RequestContextStore } from '../common/context/request-context';
+import { PERMISSIONS } from '../common/rbac/permissions';
+import { paginate, PaginatedResult, safeOrderBy } from '../common/dto/pagination.dto';
 import {
   CreateProductDto,
   ProductQueryDto,
@@ -13,14 +15,37 @@ import {
  * mentions tenantId: the Prisma extension supplies it. Every other feature
  * module follows this shape.
  */
+/** What a shopper or admin may sort a product list by. */
+const PRODUCT_SORT_FIELDS = ['createdAt', 'name', 'price', 'stock', 'updatedAt'] as const;
+
 @Injectable()
 export class ProductsService {
   constructor(private readonly prisma: PrismaService) {}
 
+  /**
+   * The list endpoint is public, so it serves two very different callers.
+   *
+   * Staff browsing the admin need drafts and archived products; a visitor must
+   * see only what is on sale. Defaulting to "no status filter" gave anonymous
+   * callers every unreleased product — name, price and all — because the
+   * storefront happened to pass `status=ACTIVE` and nothing enforced it.
+   * Anyone calling the API directly saw the lot.
+   */
   async findAll(query: ProductQueryDto): Promise<PaginatedResult<unknown>> {
+    const canSeeUnpublished =
+      RequestContextStore.get()?.permissions?.includes(PERMISSIONS.PRODUCTS_READ) ?? false;
+
+    // Asking for drafts without permission returns nothing, rather than
+    // quietly substituting ACTIVE and answering a different question.
+    if (!canSeeUnpublished && query.status && query.status !== ProductStatus.ACTIVE) {
+      return paginate([], 0, query);
+    }
+
+    const status = canSeeUnpublished ? query.status : ProductStatus.ACTIVE;
+
     const where: Prisma.ProductWhereInput = {
       deletedAt: null,
-      ...(query.status ? { status: query.status } : {}),
+      ...(status ? { status } : {}),
       ...(query.categoryId ? { categoryId: query.categoryId } : {}),
       ...(query.brandId ? { brandId: query.brandId } : {}),
       ...(query.featured !== undefined ? { isFeatured: query.featured } : {}),
@@ -52,7 +77,7 @@ export class ProductsService {
           category: { select: { id: true, name: true, slug: true } },
           _count: { select: { variants: true } },
         },
-        orderBy: { [query.sortBy]: query.sortOrder },
+        orderBy: safeOrderBy(query.sortBy, PRODUCT_SORT_FIELDS, 'createdAt', query.sortOrder),
         skip: query.skip,
         take: query.limit,
       }),

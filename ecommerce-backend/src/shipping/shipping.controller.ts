@@ -1,5 +1,6 @@
 import {
   Body,
+  Patch,
   Controller,
   Delete,
   Get,
@@ -11,6 +12,8 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ShippingService } from './shipping.service';
+import { ShipmentsService } from './shipments.service';
+import { CreateShipmentDto, UpdateShipmentDto } from './dto/shipment.dto';
 import { RequirePermissions } from '../common/decorators';
 import { PERMISSIONS } from '../common/rbac/permissions';
 import {
@@ -74,5 +77,41 @@ export class ShippingController {
   @ApiOperation({ summary: 'Deactivate a method (shipments still reference it)' })
   removeMethod(@Param('id', ParseUUIDPipe) id: string) {
     return this.shipping.removeMethod(id);
+  }
+}
+
+/**
+ * Shipments hang off an order rather than off the shipping catalogue, so they
+ * get their own controller and the orders permission, not the shipping one:
+ * dispatching a parcel is fulfilment work, not rate configuration.
+ */
+@ApiTags('Shipping')
+@ApiBearerAuth()
+@Controller('orders/:orderId/shipments')
+export class ShipmentsController {
+  constructor(private readonly shipments: ShipmentsService) {}
+
+  @Get()
+  @RequirePermissions(PERMISSIONS.ORDERS_READ)
+  @ApiOperation({ summary: 'Parcels dispatched for this order' })
+  list(@Param('orderId', ParseUUIDPipe) orderId: string) {
+    return this.shipments.listForOrder(orderId);
+  }
+
+  @Post()
+  @RequirePermissions(PERMISSIONS.ORDERS_UPDATE)
+  @ApiOperation({ summary: 'Record a dispatch; advances the order to SHIPPED' })
+  create(
+    @Param('orderId', ParseUUIDPipe) orderId: string,
+    @Body() dto: CreateShipmentDto,
+  ) {
+    return this.shipments.create(orderId, dto);
+  }
+
+  @Patch(':id')
+  @RequirePermissions(PERMISSIONS.ORDERS_UPDATE)
+  @ApiOperation({ summary: 'Update tracking or status; DELIVERED closes the order' })
+  update(@Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateShipmentDto) {
+    return this.shipments.update(id, dto);
   }
 }

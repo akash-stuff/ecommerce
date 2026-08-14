@@ -4,12 +4,24 @@ import {
   Injectable,
   NestInterceptor,
 } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { map, Observable } from 'rxjs';
+import { SKIP_RESPONSE_WRAP_KEY } from '../decorators';
 
 /** Wraps every successful payload as `{ success: true, data }`. */
 @Injectable()
 export class ResponseInterceptor<T> implements NestInterceptor<T, unknown> {
-  intercept(_: ExecutionContext, next: CallHandler<T>): Observable<unknown> {
+  constructor(private readonly reflector: Reflector) {}
+
+  intercept(context: ExecutionContext, next: CallHandler<T>): Observable<unknown> {
+    // Routes serving XML, plain text or a file opt out entirely.
+    const skip = this.reflector.getAllAndOverride<boolean>(SKIP_RESPONSE_WRAP_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+
+    if (skip) return next.handle();
+
     return next.handle().pipe(
       map((data) => {
         // Paginated services return { items, meta } — hoist meta alongside data.

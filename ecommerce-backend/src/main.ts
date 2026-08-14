@@ -1,11 +1,12 @@
 import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
-import { Logger, ValidationPipe, VersioningType } from '@nestjs/common';
+import { Logger, RequestMethod, ValidationPipe, VersioningType } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { configureApp } from './bootstrap';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -21,7 +22,10 @@ async function bootstrap(): Promise<void> {
   // tenant resolution depends on.
   app.set('trust proxy', 1);
 
-  app.setGlobalPrefix('api/v1');
+  // Routing and validation live in bootstrap.ts so the e2e suite runs against
+  // exactly the same configuration rather than its own copy.
+  configureApp(app);
+
   app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }));
   app.use(cookieParser());
 

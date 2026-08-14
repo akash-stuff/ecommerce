@@ -24,7 +24,13 @@ export default function Login() {
     setFormError(null);
     try {
       await login(values.email, values.password);
-      navigate((location.state as { from?: string })?.from ?? '/admin', { replace: true });
+
+      // A super admin manages the platform, not a single store, so they land in
+      // the platform console. Anyone sent here by a guard goes back where they
+      // were trying to go.
+      const requested = (location.state as { from?: string })?.from;
+      const isPlatformAdmin = useAuthStore.getState().user?.role === 'SUPER_ADMIN';
+      navigate(requested ?? (isPlatformAdmin ? '/platform' : '/admin'), { replace: true });
     } catch (e) {
       setFormError((e as { message?: string }).message ?? 'Could not sign in.');
     }

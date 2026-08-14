@@ -1,8 +1,9 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import * as argon2 from 'argon2';
 import { AppModule } from '../src/app.module';
+import { configureApp } from '../src/bootstrap';
 import { PrismaService } from '../src/common/prisma/prisma.service';
 import { TenantResolverService } from '../src/tenants/tenant-resolver.service';
 
@@ -26,25 +27,62 @@ describe('Tenant isolation (e2e)', () => {
   const ids: Record<string, string> = {};
   let tokenA: string;
   let tokenB: string;
+  /** A super admin, for the platform routes that no tenant may reach. */
+  let superToken: string;
+  /** A signed-in shopper at tenant A, for customer-only surfaces. */
+  let customerTokenA: string;
+
+  // Tenant-less by definition: the platform console manages every store, so its
+  // hostname must resolve to no tenant at all.
+  const PLATFORM_HOST = 'localhost';
 
   beforeAll(async () => {
-    const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
+      .compile();
+
     app = moduleRef.createNestApplication();
-    app.setGlobalPrefix('api/v1');
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    // The same configuration production uses, not a second copy of it.
+    configureApp(app);
     await app.init();
 
     prisma = app.get(PrismaService);
     await seedTwoTenants();
   });
 
-  afterAll(async () => {
+  /** Everything this suite creates, removable in any order. */
+  async function clearFixtures() {
     await prisma.runUnscoped(async (db) => {
-      await db.tenant.deleteMany({ where: { slug: { in: [A.slug, B.slug] } } });
+      // Audit rows outlive their tenant by design (SetNull on delete), so they
+      // go first while the ids are still resolvable.
+      await db.auditLog.deleteMany({
+        where: { user: { email: 'platform-e2e@example.test' } },
+      });
+      await db.tenant.deleteMany({
+        where: {
+          OR: [
+            { slug: { in: [A.slug, B.slug] } },
+            // Tenants the provisioning test creates. It deletes its own, but an
+            // interrupted run leaves them behind and they accumulate.
+            { slug: { startsWith: 'audit-created-' } },
+          ],
+        },
+      });
       await db.user.deleteMany({
-        where: { email: { in: [`owner@${A.slug}.test`, `owner@${B.slug}.test`] } },
+        where: {
+          email: {
+            in: [
+              `owner@${A.slug}.test`,
+              `owner@${B.slug}.test`,
+              'platform-e2e@example.test',
+            ],
+          },
+        },
       });
     });
+  }
+
+  afterAll(async () => {
+    await clearFixtures();
     // The hostname->tenant cache outlives the data. Leaving it populated makes
     // the next run resolve these hosts to tenants that no longer exist.
     await app.get(TenantResolverService).invalidate([A.host, B.host]);
@@ -52,6 +90,12 @@ describe('Tenant isolation (e2e)', () => {
   });
 
   async function seedTwoTenants() {
+    // A run killed mid-flight never reaches afterAll, and its tenants keep the
+    // hostnames this fixture needs — so the next run failed on a unique
+    // constraint rather than on anything it was testing. Clearing first makes
+    // the suite recoverable instead of requiring a manual database cleanup.
+    await clearFixtures();
+
     await prisma.runUnscoped(async (db) => {
       for (const t of [A, B]) {
         const tenant = await db.tenant.create({
@@ -85,6 +129,9 @@ describe('Tenant isolation (e2e)', () => {
             price: 100,
             stock: 10,
             status: 'ACTIVE',
+            // Linked so facet counts have something to group by, as a real
+            // catalogue would.
+            categoryId: category.id,
           },
         });
         ids[`${t.slug}:product`] = product.id;
@@ -95,6 +142,9 @@ describe('Tenant isolation (e2e)', () => {
             tenantId: tenant.id,
             email: 'shopper@example.com',
             firstName: 'Sam',
+            // Hashed so the suite can sign in as a shopper once during setup;
+            // registering per test burns the 3-per-minute throttle.
+            passwordHash: await argon2.hash('TestPassword123', { type: argon2.argon2id }),
           },
         });
         ids[`${t.slug}:customer`] = customer.id;
@@ -149,6 +199,41 @@ describe('Tenant isolation (e2e)', () => {
 
     tokenA = await signIn(A.host);
     tokenB = await signIn(B.host);
+    superToken = await seedSuperAdmin();
+    customerTokenA = await signInCustomer(A.host);
+  }
+
+  /**
+   * A super admin belongs to no tenant, so it is created outside the two-tenant
+   * fixture and signs in on the platform host.
+   */
+  async function seedSuperAdmin(): Promise<string> {
+    const email = 'platform-e2e@example.test';
+
+    const passwordHash = await argon2.hash('TestPassword123', { type: argon2.argon2id });
+
+    const user = await prisma.runUnscoped((db) =>
+      db.user.upsert({
+        where: { email },
+        update: {},
+        create: {
+          email,
+          passwordHash,
+          firstName: 'Platform',
+          lastName: 'Tester',
+          systemRole: 'SUPER_ADMIN',
+          emailVerifiedAt: new Date(),
+        },
+      }),
+    );
+    ids['super:user'] = user.id;
+
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/auth/login')
+      .set('Host', PLATFORM_HOST)
+      .send({ email, password: 'TestPassword123' });
+
+    return res.body?.data?.accessToken ?? '';
   }
 
   /** Adds the tenant's shared-slug product to a fresh guest cart. */
@@ -171,6 +256,15 @@ describe('Tenant isolation (e2e)', () => {
     country: 'IN',
     postalCode: '400001',
   };
+
+  /** One shopper sign-in for the whole suite; the auth routes are rate limited. */
+  async function signInCustomer(host: string): Promise<string> {
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/auth/customer/login')
+      .set('Host', host)
+      .send({ email: 'shopper@example.com', password: 'TestPassword123' });
+    return res.body?.data?.accessToken ?? '';
+  }
 
   async function signIn(host: string): Promise<string> {
     const res = await request(app.getHttpServer())
@@ -937,6 +1031,750 @@ describe('Tenant isolation (e2e)', () => {
       .expect(400);
 
     expect(res.body.code).toBe('DOMAIN_RESERVED');
+  });
+
+  it('lists only its own customers, even when an email is shared', async () => {
+    /**
+     * Created directly rather than through `/auth/customer/register`, which is
+     * capped at 3 per minute. This test is about list scoping, not registration;
+     * borrowing that endpoint's quota would make it fail based on how many other
+     * tests ran first. Registration itself is covered separately above.
+     */
+    const email = `shared-shopper-${Date.now()}@example.com`;
+    for (const tenantKey of ['tenant-a', 'tenant-b']) {
+      await prisma.runUnscoped((db) =>
+        db.customer.create({
+          data: {
+            tenantId: ids[`${tenantKey}:tenant`],
+            email,
+            firstName: 'Shared',
+            passwordHash: 'not-a-real-hash',
+          },
+        }),
+      );
+    }
+
+    const mine = await request(app.getHttpServer())
+      .get('/api/v1/customers')
+      .set('Host', A.host)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+
+    const theirs = await request(app.getHttpServer())
+      .get('/api/v1/customers')
+      .set('Host', B.host)
+      .set('Authorization', `Bearer ${tokenB}`)
+      .expect(200);
+
+    const idsA = mine.body.data.map((c: { id: string }) => c.id);
+    const idsB = theirs.body.data.map((c: { id: string }) => c.id);
+
+    // Both stores see a customer with that email, and they are different rows.
+    expect(mine.body.data.some((c: { email: string }) => c.email === email)).toBe(true);
+    expect(theirs.body.data.some((c: { email: string }) => c.email === email)).toBe(true);
+    expect(idsA.filter((id: string) => idsB.includes(id))).toHaveLength(0);
+
+    // And one store cannot read the other's row directly.
+    await request(app.getHttpServer())
+      .get(`/api/v1/customers/${idsB[0]}`)
+      .set('Host', A.host)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(404);
+  });
+
+  /**
+   * `Customer.lastOrderAt` and `totalSpent` are denormalised columns nothing
+   * currently writes, so the list showed "1 order, last ordered never". Both are
+   * derived from orders instead; this asserts the two never contradict.
+   */
+  it('reports a last-order date whenever a customer has orders', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/customers')
+      .set('Host', A.host)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+
+    for (const c of res.body.data as { orderCount: number; lastOrderAt: string | null }[]) {
+      expect(Boolean(c.lastOrderAt)).toBe(c.orderCount > 0);
+    }
+  });
+
+  it('refuses to change a customer\'s email address', async () => {
+    const list = await request(app.getHttpServer())
+      .get('/api/v1/customers')
+      .set('Host', A.host)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+
+    // Editing an email would move an order history to an unconfirmed address,
+    // so the field is not in the DTO and unknown keys are rejected.
+    await request(app.getHttpServer())
+      .patch(`/api/v1/customers/${list.body.data[0].id}`)
+      .set('Host', A.host)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ email: 'hijacked@example.com' })
+      .expect(400);
+  });
+
+  describe('sitemap and robots', () => {
+    it('builds a sitemap from the requesting store\'s own catalogue', async () => {
+      const a = await request(app.getHttpServer())
+        .get('/sitemap.xml').set('Host', A.host).expect(200);
+
+      expect(a.headers['content-type']).toContain('application/xml');
+      // Unwrapped: a crawler must get XML, not a JSON envelope containing XML.
+      expect(a.text.startsWith('<?xml')).toBe(true);
+      // No scheme asserted: it is taken from the request, which is plain http
+      // under supertest and https behind the real proxy.
+      expect(a.text).toContain(`${A.host}/product/shared-widget`);
+
+      const b = await request(app.getHttpServer())
+        .get('/sitemap.xml').set('Host', B.host).expect(200);
+
+      // Same slug, different tenant — each sitemap advertises its own hostname.
+      expect(b.text).toContain(`${B.host}/product/shared-widget`);
+      expect(b.text).not.toContain(A.host);
+    });
+
+    it('keeps draft and archived products out of the sitemap', async () => {
+      const draft = await prisma.runAsTenant(ids['tenant-a:tenant'], (db) =>
+        db.product.create({
+          data: {
+            tenantId: ids['tenant-a:tenant'],
+            name: 'Not ready',
+            slug: 'not-ready-yet',
+            sku: 'DRAFT-1',
+            price: 10,
+            status: 'DRAFT',
+          } as never,
+        }),
+      );
+
+      const res = await request(app.getHttpServer())
+        .get('/sitemap.xml').set('Host', A.host).expect(200);
+
+      expect(res.text).not.toContain('not-ready-yet');
+
+      await prisma.runUnscoped((db) => db.product.delete({ where: { id: draft.id } }));
+    });
+
+    it('disallows everything while a store is unpublished', async () => {
+      await prisma.runUnscoped((db) =>
+        db.store.updateMany({
+          where: { id: ids['tenant-a:store'] },
+          data: { isPublished: false },
+        }),
+      );
+
+      const robots = await request(app.getHttpServer())
+        .get('/robots.txt').set('Host', A.host).expect(200);
+
+      expect(robots.text).toContain('Disallow: /');
+      expect(robots.text).not.toContain('Allow: /');
+
+      await prisma.runUnscoped((db) =>
+        db.store.updateMany({
+          where: { id: ids['tenant-a:store'] },
+          data: { isPublished: true },
+        }),
+      );
+    });
+
+    it('keeps per-visitor pages out of the index', async () => {
+      const robots = await request(app.getHttpServer())
+        .get('/robots.txt').set('Host', A.host).expect(200);
+
+      for (const path of ['/cart', '/checkout', '/account', '/api/']) {
+        expect(robots.text).toContain(`Disallow: ${path}`);
+      }
+      expect(robots.text).toContain(`${A.host}/sitemap.xml`);
+    });
+  });
+
+  describe('audit trail', () => {
+    it('records a suspension against the right tenant and actor', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/platform/tenants/${ids['tenant-b:tenant']}/suspend`)
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', `Bearer ${superToken}`)
+        .send({ reason: 'audit e2e' })
+        .expect(200);
+
+      const trail = await request(app.getHttpServer())
+        .get('/api/v1/platform/audit?action=tenant.suspended')
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', `Bearer ${superToken}`)
+        .expect(200);
+
+      const entry = trail.body.data.find(
+        (a: { entityId: string }) => a.entityId === ids['tenant-b:tenant'],
+      );
+      expect(entry).toBeDefined();
+      expect(entry.changes.reason).toBe('audit e2e');
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/platform/tenants/${ids['tenant-b:tenant']}/activate`)
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', `Bearer ${superToken}`)
+        .expect(200);
+    });
+
+    /**
+     * The audit service writes on its own connection, so an entry created inside
+     * the provisioning transaction referenced a tenant row it could not see yet.
+     * Audit failures are logged rather than thrown, so the entry vanished
+     * silently — exactly the kind of gap an audit log must not have.
+     */
+    it('records tenant creation, which happens inside a transaction', async () => {
+      const slug = `audit-created-${Date.now().toString(36)}`;
+
+      const created = await request(app.getHttpServer())
+        .post('/api/v1/platform/tenants')
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', `Bearer ${superToken}`)
+        .send({
+          businessName: 'Audit Created Co',
+          storeName: 'Audit Created',
+          slug,
+          email: `hello@${slug}.test`,
+          ownerEmail: `owner@${slug}.test`,
+          ownerPassword: 'ProvisionPass123!',
+          ownerFirstName: 'Audit',
+        })
+        .expect(201);
+
+      const trail = await request(app.getHttpServer())
+        .get('/api/v1/platform/audit?action=tenant.created')
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', `Bearer ${superToken}`)
+        .expect(200);
+
+      expect(
+        trail.body.data.some((a: { entityId: string }) => a.entityId === created.body.data.id),
+      ).toBe(true);
+
+      await prisma.runUnscoped((db) =>
+        db.tenant.delete({ where: { id: created.body.data.id } }),
+      );
+    });
+
+    it('keeps a store\'s audit trail to its own actions', async () => {
+      const mine = await request(app.getHttpServer())
+        .get('/api/v1/audit')
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+
+      const foreign = mine.body.data.filter(
+        (a: { tenantId: string | null }) =>
+          a.tenantId !== null && a.tenantId !== ids['tenant-a:tenant'],
+      );
+      expect(foreign).toHaveLength(0);
+    });
+
+    it('ignores a tenantId supplied by a store owner', async () => {
+      // Passing another tenant's id must not widen the query.
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/audit?tenantId=${ids['tenant-b:tenant']}`)
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+
+      for (const entry of res.body.data as { tenantId: string }[]) {
+        expect(entry.tenantId).toBe(ids['tenant-a:tenant']);
+      }
+    });
+
+    it('refuses the platform trail to a store owner', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/platform/audit')
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(403);
+    });
+  });
+
+  describe('platform boundaries', () => {
+    it('refuses plans and platform analytics to a store owner', async () => {
+      for (const path of ['/api/v1/platform/plans', '/api/v1/platform/analytics/overview']) {
+        await request(app.getHttpServer())
+          .get(path)
+          .set('Host', A.host)
+          .set('Authorization', `Bearer ${tokenA}`)
+          .expect(403);
+      }
+    });
+
+    it('will not retire a plan a store is still on', async () => {
+      const plans = await request(app.getHttpServer())
+        .get('/api/v1/platform/plans')
+        .set('Host', PLATFORM_HOST)
+        .set('Authorization', `Bearer ${superToken}`)
+        .expect(200);
+
+      const inUse = plans.body.data.find(
+        (p: { _count: { subscriptions: number } }) => p._count.subscriptions > 0,
+      );
+
+      if (inUse) {
+        const res = await request(app.getHttpServer())
+          .delete(`/api/v1/platform/plans/${inUse.id}`)
+          .set('Host', PLATFORM_HOST)
+          .set('Authorization', `Bearer ${superToken}`)
+          .expect(409);
+        expect(res.body.code).toBe('PLAN_IN_USE');
+      }
+    });
+  });
+
+  /**
+   * `sortBy` arrives as free text and used to be spread straight into Prisma's
+   * `orderBy`. An unknown column made Prisma throw, so `/shop?sort=anything`
+   * was a 500 any visitor could trigger — the storefront puts that value in the
+   * URL, so it was reachable by editing the address bar.
+   */
+  describe('sort field allowlist', () => {
+    for (const sortBy of ['nonsense', '__proto__', 'id; DROP TABLE products', '']) {
+      it(`falls back rather than failing on sortBy=${sortBy || '(empty)'}`, async () => {
+        const res = await request(app.getHttpServer())
+          .get('/api/v1/products')
+          .query({ sortBy })
+          .set('Host', A.host)
+          .expect(200);
+
+        expect(Array.isArray(res.body.data)).toBe(true);
+      });
+    }
+
+    it('still honours a field that is allowed', async () => {
+      const asc = await request(app.getHttpServer())
+        .get('/api/v1/products?sortBy=price&sortOrder=asc')
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+
+      const desc = await request(app.getHttpServer())
+        .get('/api/v1/products?sortBy=price&sortOrder=desc')
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+
+      // Asserts the ordering rather than a row count: other tests in this file
+      // create products, so a count would depend on execution order.
+      const ascPrices = asc.body.data.map((p: { price: string }) => Number(p.price));
+      expect([...ascPrices].sort((a, b) => a - b)).toEqual(ascPrices);
+      expect(desc.body.data.map((p: { price: string }) => Number(p.price))).toEqual(
+        [...ascPrices].reverse(),
+      );
+    });
+  });
+
+  /**
+   * `GET /products` is public and had no status filter of its own, so an
+   * anonymous request returned every DRAFT and ARCHIVED product — names, prices
+   * and all. The storefront passed `status=ACTIVE` and hid the problem; anyone
+   * calling the API directly saw a store's unreleased catalogue.
+   */
+  describe('unpublished products', () => {
+    let draftId: string;
+
+    beforeAll(async () => {
+      const draft = await prisma.runUnscoped((db) =>
+        db.product.create({
+          data: {
+            tenantId: ids['tenant-a:tenant'],
+            name: 'Unreleased Widget',
+            slug: `unreleased-${Date.now()}`,
+            sku: `UNREL-${Date.now()}`,
+            price: 999,
+            status: 'DRAFT',
+          },
+        }),
+      );
+      draftId = draft.id;
+    });
+
+    afterAll(async () => {
+      await prisma.runUnscoped((db) => db.product.deleteMany({ where: { id: draftId } }));
+    });
+
+    it('are hidden from an anonymous list', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/products')
+        .set('Host', A.host)
+        .expect(200);
+
+      expect(res.body.data.every((p: { status: string }) => p.status === 'ACTIVE')).toBe(true);
+      expect(JSON.stringify(res.body)).not.toContain('Unreleased Widget');
+    });
+
+    it('cannot be revealed by asking for them explicitly', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/products?status=DRAFT')
+        .set('Host', A.host)
+        .expect(200);
+
+      expect(res.body.data).toHaveLength(0);
+    });
+
+    it('are visible to staff who may read products', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/products?status=DRAFT')
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+
+      expect(res.body.data.some((p: { id: string }) => p.id === draftId)).toBe(true);
+    });
+
+    it('stay hidden from a signed-in shopper', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/products')
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${customerTokenA}`)
+        .expect(200);
+
+      expect(res.body.data.every((p: { status: string }) => p.status === 'ACTIVE')).toBe(true);
+    });
+  });
+
+  describe('wishlist', () => {
+    it('tells a guest a product is not saved rather than refusing', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/wishlist/${ids['tenant-a:product']}`)
+        .set('Host', A.host)
+        .expect(200);
+
+      expect(res.body.data.saved).toBe(false);
+    });
+
+    it('saves once however many times it is asked', async () => {
+      const first = await request(app.getHttpServer())
+        .post(`/api/v1/wishlist/${ids['tenant-a:product']}`)
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${customerTokenA}`)
+        .expect(200);
+
+      const second = await request(app.getHttpServer())
+        .post(`/api/v1/wishlist/${ids['tenant-a:product']}`)
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${customerTokenA}`)
+        .expect(200);
+
+      expect(first.body.data.alreadySaved).toBe(false);
+      expect(second.body.data.alreadySaved).toBe(true);
+
+      const list = await request(app.getHttpServer())
+        .get('/api/v1/wishlist')
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${customerTokenA}`)
+        .expect(200);
+
+      expect(list.body.data).toHaveLength(1);
+    });
+
+    it("will not save another store's product", async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/wishlist/${ids['tenant-b:product']}`)
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${customerTokenA}`)
+        .expect(404);
+    });
+
+    /**
+     * `list()` shows only ACTIVE products, so saving a draft used to succeed
+     * and then never appear — the heart filled and the wishlist stayed empty.
+     */
+    it('will not save a product that is not on sale', async () => {
+      const draft = await prisma.runUnscoped((db) =>
+        db.product.create({
+          data: {
+            tenantId: ids['tenant-a:tenant'],
+            name: 'Draft Widget',
+            slug: `draft-${Date.now()}`,
+            sku: `DRAFT-${Date.now()}`,
+            price: 10,
+            status: 'DRAFT',
+          },
+        }),
+      );
+
+      await request(app.getHttpServer())
+        .post(`/api/v1/wishlist/${draft.id}`)
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${customerTokenA}`)
+        .expect(404);
+
+      await prisma.runUnscoped((db) => db.product.delete({ where: { id: draft.id } }));
+    });
+  });
+
+  /**
+   * Page content is author-written HTML rendered on the store's own origin, so
+   * a script that survives the save runs against that store's customers. The
+   * sanitiser is unit-tested; this proves it is actually wired into the write
+   * path and that the storefront never serves the raw value.
+   */
+  describe('CMS pages', () => {
+    let pageId: string;
+
+    it('strips executable markup on save and reports what went', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/pages')
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({
+          title: 'About Tenant A',
+          content:
+            '<h2>Story</h2><p>Since 2019.</p><script>steal()</script><p onclick="x()">Hi</p><a href="javascript:alert(1)">bad</a>',
+          isPublished: true,
+        })
+        .expect(201);
+
+      pageId = res.body.data.id;
+
+      expect(res.body.data.content).not.toContain('<script');
+      expect(res.body.data.content).not.toContain('onclick');
+      expect(res.body.data.content).not.toContain('javascript:');
+      expect(res.body.data.content).toContain('Since 2019');
+      expect(res.body.data.removed).toEqual(
+        expect.arrayContaining(['<script>', 'event handlers', 'unsafe URLs']),
+      );
+    });
+
+    it('serves the sanitised page publicly', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/pages/by-slug/about-tenant-a')
+        .set('Host', A.host)
+        .expect(200);
+
+      expect(res.body.data.content).not.toContain('<script');
+    });
+
+    it('keeps pages to their own store', async () => {
+      await request(app.getHttpServer())
+        .get('/api/v1/pages/by-slug/about-tenant-a')
+        .set('Host', B.host)
+        .expect(404);
+
+      const theirs = await request(app.getHttpServer())
+        .get('/api/v1/pages')
+        .set('Host', B.host)
+        .expect(200);
+
+      expect(theirs.body.data).toHaveLength(0);
+    });
+
+    it('refuses a slug the storefront router already owns', async () => {
+      const res = await request(app.getHttpServer())
+        .post('/api/v1/pages')
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ title: 'Cart', slug: 'cart', content: '<p>x</p>' })
+        .expect(409);
+
+      expect(res.body.code).toBe('PAGE_SLUG_RESERVED');
+    });
+
+    it('hides an unpublished page from the storefront and the sitemap', async () => {
+      await request(app.getHttpServer())
+        .put(`/api/v1/pages/${pageId}`)
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ isPublished: false })
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .get('/api/v1/pages/by-slug/about-tenant-a')
+        .set('Host', A.host)
+        .expect(404);
+
+      const sitemap = await request(app.getHttpServer())
+        .get('/sitemap.xml')
+        .set('Host', A.host)
+        .expect(200);
+
+      expect(sitemap.text).not.toContain('about-tenant-a');
+    });
+
+    afterAll(async () => {
+      await prisma.runUnscoped((db) => db.page.deleteMany({ where: { id: pageId } }));
+    });
+  });
+
+  describe('shipments', () => {
+    let orderId: string;
+    let shipmentId: string;
+
+    beforeAll(async () => {
+      const cart = await guestCart(A.host);
+      const order = await request(app.getHttpServer())
+        .post('/api/v1/checkout')
+        .set('Host', A.host)
+        .set('x-cart-token', cart)
+        .send({ email: 'ship@example.test', shippingAddress: address, paymentMethod: 'COD' })
+        .expect(201);
+
+      orderId = order.body.data.id;
+    });
+
+    it('advances the order and records tracking', async () => {
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/orders/${orderId}/shipments`)
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ provider: 'Delhivery', trackingNumber: 'DL-E2E-1' })
+        .expect(201);
+
+      shipmentId = res.body.data.id;
+
+      const order = await request(app.getHttpServer())
+        .get(`/api/v1/orders/${orderId}`)
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+
+      // Dispatching *is* shipping; the two must not be able to disagree.
+      expect(order.body.data.status).toBe('SHIPPED');
+      expect(order.body.data.fulfillmentStatus).toBe('FULFILLED');
+    });
+
+    it('closes the order when the parcel is delivered', async () => {
+      await request(app.getHttpServer())
+        .patch(`/api/v1/orders/${orderId}/shipments/${shipmentId}`)
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ status: 'DELIVERED' })
+        .expect(200);
+
+      const order = await request(app.getHttpServer())
+        .get(`/api/v1/orders/${orderId}`)
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(200);
+
+      expect(order.body.data.status).toBe('DELIVERED');
+    });
+
+    it("will not let another store dispatch this order", async () => {
+      await request(app.getHttpServer())
+        .post(`/api/v1/orders/${orderId}/shipments`)
+        .set('Host', B.host)
+        .set('Authorization', `Bearer ${tokenB}`)
+        .send({ provider: 'Hijack' })
+        .expect(404);
+    });
+
+    it('refuses to dispatch a cancelled order', async () => {
+      const cart = await guestCart(A.host);
+      const order = await request(app.getHttpServer())
+        .post('/api/v1/checkout')
+        .set('Host', A.host)
+        .set('x-cart-token', cart)
+        .send({ email: 'cancel@example.test', shippingAddress: address, paymentMethod: 'COD' })
+        .expect(201);
+
+      await request(app.getHttpServer())
+        .patch(`/api/v1/orders/${order.body.data.id}/status`)
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ status: 'CANCELLED', reason: 'e2e' })
+        .expect(200);
+
+      const res = await request(app.getHttpServer())
+        .post(`/api/v1/orders/${order.body.data.id}/shipments`)
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .send({ provider: 'Delhivery' })
+        .expect(400);
+
+      expect(res.body.code).toBe('ORDER_NOT_SHIPPABLE');
+    });
+  });
+
+  describe('search facets', () => {
+    it('counts only this store, and only what is on sale', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/products/facets')
+        .set('Host', A.host)
+        .expect(200);
+
+      expect(res.body.data.total).toBeGreaterThan(0);
+      expect(res.body.data.categories.map((c: { name: string }) => c.name)).toContain(
+        'Shared Category',
+      );
+      expect(Number(res.body.data.price.min)).toBeGreaterThan(0);
+    });
+
+    /**
+     * The point of a facet count: choosing a category narrows the price range
+     * and the availability counts, but must not remove the category list —
+     * otherwise there is no way back without clearing the filter by hand.
+     */
+    it('keeps the category list navigable after a category is chosen', async () => {
+      const res = await request(app.getHttpServer())
+        .get(`/api/v1/products/facets?categoryId=${ids['tenant-a:category']}`)
+        .set('Host', A.host)
+        .expect(200);
+
+      expect(res.body.data.categories.length).toBeGreaterThan(0);
+    });
+
+    it('narrows the total when a price range excludes everything', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/api/v1/products/facets?minPrice=999999')
+        .set('Host', A.host)
+        .expect(200);
+
+      expect(res.body.data.total).toBe(0);
+      expect(res.body.data.availability.inStock).toBe(0);
+    });
+
+    it('never counts another store\'s catalogue', async () => {
+      const a = await request(app.getHttpServer())
+        .get('/api/v1/products/facets')
+        .set('Host', A.host)
+        .expect(200);
+
+      const b = await request(app.getHttpServer())
+        .get('/api/v1/products/facets')
+        .set('Host', B.host)
+        .expect(200);
+
+      const aIds = a.body.data.categories.map((c: { id: string }) => c.id);
+      const bIds = b.body.data.categories.map((c: { id: string }) => c.id);
+      expect(aIds.filter((id: string) => bIds.includes(id))).toHaveLength(0);
+    });
+
+    it('excludes drafts from the counts', async () => {
+      const before = await request(app.getHttpServer())
+        .get('/api/v1/products/facets')
+        .set('Host', A.host)
+        .expect(200);
+
+      const draft = await prisma.runUnscoped((db) =>
+        db.product.create({
+          data: {
+            tenantId: ids['tenant-a:tenant'],
+            name: 'Facet Draft',
+            slug: `facet-draft-${Date.now()}`,
+            sku: `FACET-${Date.now()}`,
+            price: 5,
+            status: 'DRAFT',
+            categoryId: ids['tenant-a:category'],
+          },
+        }),
+      );
+
+      const after = await request(app.getHttpServer())
+        .get('/api/v1/products/facets')
+        .set('Host', A.host)
+        .expect(200);
+
+      expect(after.body.data.total).toBe(before.body.data.total);
+
+      await prisma.runUnscoped((db) => db.product.delete({ where: { id: draft.id } }));
+    });
   });
 
   it('serves each hostname its own store branding', async () => {

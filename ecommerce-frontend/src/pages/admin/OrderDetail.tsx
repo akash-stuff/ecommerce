@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiClient, unwrap } from '@/services/api-client';
 import { ArrowLeft } from 'lucide-react';
 import { orderService } from '@/services/admin.service';
 import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { StatusBadge } from '@/components/admin/DataTable';
-import { Field, FormError, Modal, Textarea } from '@/components/admin/Modal';
+import { Field, FormError, Input, Modal, Textarea } from '@/components/admin/Modal';
 import { formatMoney } from '@/utils/format';
 
 /**
@@ -13,6 +14,16 @@ import { formatMoney } from '@/utils/format';
  * returns INVALID_STATUS_TRANSITION either way — but offering only the moves
  * that can succeed is kinder than a button that always errors.
  */
+interface Shipment {
+  id: string;
+  provider: string;
+  trackingNumber: string | null;
+  trackingUrl: string | null;
+  status: string;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+}
+
 const NEXT_STATUS: Record<string, string[]> = {
   PENDING: ['CONFIRMED', 'CANCELLED'],
   CONFIRMED: ['PROCESSING', 'CANCELLED'],
@@ -30,6 +41,10 @@ export default function OrderDetail() {
   const queryClient = useQueryClient();
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState('');
+  const [dispatching, setDispatching] = useState(false);
+  const [carrier, setCarrier] = useState('');
+  const [tracking, setTracking] = useState('');
+  const [trackingUrl, setTrackingUrl] = useState('');
 
   const query = useQuery({
     queryKey: ['admin-order', id],
@@ -52,6 +67,32 @@ export default function OrderDetail() {
     onSuccess: () => {
       setCancelling(false);
       setReason('');
+      invalidate();
+    },
+  });
+
+  const shipments = useQuery({
+    queryKey: ['order-shipments', id],
+    queryFn: () =>
+      unwrap<Shipment[]>(apiClient.get(`/orders/${id}/shipments`)),
+    enabled: Boolean(id),
+  });
+
+  const dispatchParcel = useMutation({
+    mutationFn: () =>
+      unwrap<Shipment>(
+        apiClient.post(`/orders/${id}/shipments`, {
+          provider: carrier || undefined,
+          trackingNumber: tracking || undefined,
+          trackingUrl: trackingUrl || undefined,
+        }),
+      ),
+    onSuccess: () => {
+      setDispatching(false);
+      setCarrier('');
+      setTracking('');
+      setTrackingUrl('');
+      queryClient.invalidateQueries({ queryKey: ['order-shipments', id] });
       invalidate();
     },
   });
@@ -115,6 +156,12 @@ export default function OrderDetail() {
             Mark {status.toLowerCase()}
           </PrimaryButton>
         ))}
+
+        {['CONFIRMED', 'PROCESSING', 'PACKED'].includes(order.status) && (
+          <SecondaryButton onClick={() => setDispatching(true)}>
+            Record dispatch
+          </SecondaryButton>
+        )}
 
         {codOutstanding && (
           <SecondaryButton disabled={collect.isPending} onClick={() => collect.mutate()}>
@@ -221,6 +268,37 @@ export default function OrderDetail() {
           </section>
 
           <section className="rounded-card border border-ink-100 bg-white p-5">
+            <h2 className="text-sm font-medium text-ink-950">Parcels</h2>
+            {(shipments.data ?? []).length === 0 ? (
+              <p className="mt-2 text-sm text-ink-500">Nothing dispatched yet.</p>
+            ) : (
+              <ul className="mt-3 space-y-3 text-sm">
+                {shipments.data!.map((s) => (
+                  <li key={s.id}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-ink-900">{s.provider}</span>
+                      <StatusBadge value={s.status} />
+                    </div>
+                    {s.trackingNumber && (
+                      <p className="mt-0.5 font-mono text-xs text-ink-500">{s.trackingNumber}</p>
+                    )}
+                    {s.trackingUrl && (
+                      <a
+                        href={s.trackingUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs underline"
+                      >
+                        Track parcel
+                      </a>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="rounded-card border border-ink-100 bg-white p-5">
             <h2 className="text-sm font-medium text-ink-950">Payments</h2>
             {order.payments.length === 0 ? (
               <p className="mt-2 text-sm text-ink-500">No payment attempts recorded.</p>
@@ -244,6 +322,48 @@ export default function OrderDetail() {
           )}
         </div>
       </div>
+
+      {dispatching && (
+        <Modal
+          title="Record a dispatch"
+          onClose={() => setDispatching(false)}
+          footer={
+            <>
+              <SecondaryButton onClick={() => setDispatching(false)}>Cancel</SecondaryButton>
+              <PrimaryButton
+                disabled={dispatchParcel.isPending}
+                onClick={() => dispatchParcel.mutate()}
+              >
+                {dispatchParcel.isPending ? 'Saving…' : 'Mark shipped'}
+              </PrimaryButton>
+            </>
+          }
+        >
+          <p className="text-sm text-ink-700">
+            This marks the order shipped and emails the customer their tracking details.
+          </p>
+          <div className="mt-4 space-y-4">
+            <Field label="Carrier" hint="Whoever is carrying the parcel">
+              <Input
+                value={carrier}
+                placeholder="Delhivery"
+                onChange={(e) => setCarrier(e.target.value)}
+              />
+            </Field>
+            <Field label="Tracking number">
+              <Input value={tracking} onChange={(e) => setTracking(e.target.value)} />
+            </Field>
+            <Field label="Tracking URL" hint="Optional; included in the email">
+              <Input
+                value={trackingUrl}
+                placeholder="https://…"
+                onChange={(e) => setTrackingUrl(e.target.value)}
+              />
+            </Field>
+          </div>
+          <FormError error={dispatchParcel.error} />
+        </Modal>
+      )}
 
       {cancelling && (
         <Modal

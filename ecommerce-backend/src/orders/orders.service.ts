@@ -22,6 +22,7 @@ import { CouponsService } from '../coupons/coupons.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { ShippingService } from '../shipping/shipping.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { AuditService } from '../audit/audit.service';
 import type { OrderEmailData } from '../notifications/templates';
 import { CheckoutDto, OrderQueryDto } from './dto/order.dto';
 
@@ -60,6 +61,7 @@ export class OrdersService {
     private readonly inventory: InventoryService,
     private readonly shipping: ShippingService,
     private readonly notifications: NotificationsService,
+    private readonly audit: AuditService,
   ) {}
 
   // --- Checkout --------------------------------------------------------------
@@ -399,6 +401,13 @@ export class OrdersService {
       },
     });
 
+    void this.audit.record({
+      action: `order.${next.toLowerCase()}`,
+      entityType: 'Order',
+      entityId: id,
+      changes: { from: order.status, to: next, orderNumber: updated.orderNumber },
+    });
+
     await this.sendStatusEmail(updated, next, reason);
     return updated;
   }
@@ -458,6 +467,13 @@ export class OrdersService {
           cancelReason: reason ?? null,
         },
       });
+    });
+
+    void this.audit.record({
+      action: 'order.cancelled',
+      entityType: 'Order',
+      entityId: id,
+      changes: { orderNumber: cancelled.orderNumber, reason: reason ?? null },
     });
 
     await this.sendStatusEmail(cancelled, OrderStatus.CANCELLED, reason);

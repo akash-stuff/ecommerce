@@ -1,5 +1,5 @@
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
@@ -24,6 +24,12 @@ import { ThemeModule } from './theme/theme.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { AnalyticsModule } from './analytics/analytics.module';
 import { DomainsModule } from './domains/domains.module';
+import { CustomersModule } from './customers/customers.module';
+import { SeoModule } from './seo/seo.module';
+import { AuditModule } from './audit/audit.module';
+import { PlansModule } from './plans/plans.module';
+import { WishlistModule } from './wishlist/wishlist.module';
+import { PagesModule } from './pages/pages.module';
 import { HealthModule } from './health/health.module';
 
 import { RequestContextMiddleware } from './common/middleware/request-context.middleware';
@@ -41,10 +47,22 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
       load: [configuration],
       validate: validateEnv,
     }),
-    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 120 }]),
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => [
+        {
+          ttl: config.get<number>('throttle.ttlMs', 60_000),
+          limit: config.get<number>('throttle.limit', 120),
+        },
+      ],
+    }),
     PrismaModule,
     CacheModule,
     NotificationsModule,
+    AuditModule,
+    PlansModule,
+    WishlistModule,
+    PagesModule,
     TenantsModule,
     AuthModule,
     ProductsModule,
@@ -60,6 +78,8 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     ReviewsModule,
     AnalyticsModule,
     DomainsModule,
+    CustomersModule,
+    SeoModule,
     HealthModule,
   ],
   providers: [

@@ -4,19 +4,28 @@ import * as argon2 from 'argon2';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { TenantResolverService } from './tenant-resolver.service';
-import { paginate, PaginationQueryDto, PaginatedResult } from '../common/dto/pagination.dto';
+import { AuditService } from '../audit/audit.service';
+import {
+  paginate,
+  PaginationQueryDto,
+  PaginatedResult,
+  safeOrderBy,
+} from '../common/dto/pagination.dto';
 import { CreateTenantDto, UpdateTenantDto } from './dto/tenant.dto';
 
 /**
  * Platform-level service. Everything here runs unscoped by design, so each
  * method is reachable only from @PlatformOnly() routes.
  */
+const TENANT_SORT_FIELDS = ['createdAt', 'businessName', 'slug', 'status'] as const;
+
 @Injectable()
 export class TenantsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly config: ConfigService,
     private readonly resolver: TenantResolverService,
+    private readonly audit: AuditService,
   ) {}
 
   async findAll(query: PaginationQueryDto): Promise<PaginatedResult<unknown>> {
@@ -39,7 +48,7 @@ export class TenantsService {
             subscription: { include: { plan: { select: { name: true } } } },
             _count: { select: { products: true, orders: true } },
           },
-          orderBy: { [query.sortBy]: query.sortOrder },
+          orderBy: safeOrderBy(query.sortBy, TENANT_SORT_FIELDS, 'createdAt', query.sortOrder),
           skip: query.skip,
           take: query.limit,
         }),
@@ -57,6 +66,34 @@ export class TenantsService {
   async create(dto: CreateTenantDto) {
     const platformDomain = this.config.get<string>('platform.domain', 'platform.com');
 
+    const created = await this.provision(dto, platformDomain);
+
+    /**
+     * Recorded after the transaction commits, not inside it.
+     *
+     * The audit service writes on its own connection, so an entry created inside
+     * this transaction referenced a tenant row that was not yet visible to it —
+     * a foreign key violation that silently swallowed every `tenant.created`
+     * entry, since audit failures are logged rather than thrown.
+     */
+    await this.audit.record({
+      action: 'tenant.created',
+      entityType: 'Tenant',
+      entityId: created.id,
+      tenantId: created.id,
+      // The owner's password is in the DTO. `changes` is redacted anyway, but
+      // only the fields worth keeping are passed in the first place.
+      changes: {
+        slug: created.slug,
+        businessName: created.businessName,
+        storeName: created.store.name,
+      },
+    });
+
+    return created;
+  }
+
+  private async provision(dto: CreateTenantDto, platformDomain: string) {
     return this.prisma.runUnscoped(async (db) => {
       const clash = await db.tenant.findUnique({ where: { slug: dto.slug } });
       if (clash) {
@@ -152,8 +189,18 @@ export class TenantsService {
 
   async update(id: string, dto: UpdateTenantDto) {
     return this.prisma.runUnscoped(async (db) => {
-      await this.assertExists(db, id);
-      return db.tenant.update({ where: { id }, data: dto });
+      const before = await this.assertExists(db, id);
+      const updated = await db.tenant.update({ where: { id }, data: dto });
+
+      await this.audit.record({
+        action: 'tenant.updated',
+        entityType: 'Tenant',
+        entityId: id,
+        tenantId: id,
+        changes: { before: { businessName: before.businessName }, after: dto },
+      });
+
+      return updated;
     });
   }
 
@@ -178,19 +225,39 @@ export class TenantsService {
         where: { tenantId: tenant.id, revokedAt: null },
         data: { revokedAt: new Date() },
       });
+
+      // Taking a store offline and signing out its staff is the most
+      // consequential thing the platform can do, so it is always recorded.
+      await this.audit.record({
+        action: 'tenant.suspended',
+        entityType: 'Tenant',
+        entityId: id,
+        tenantId: id,
+        changes: { from: tenant.status, to: TenantStatus.SUSPENDED, reason },
+      });
+
       return updated;
     });
   }
 
   async activate(id: string) {
     return this.prisma.runUnscoped(async (db) => {
-      await this.assertExists(db, id);
+      const tenant = await this.assertExists(db, id);
       const updated = await db.tenant.update({
         where: { id },
         data: { status: TenantStatus.ACTIVE, suspendedAt: null, suspensionReason: null },
         include: { domains: true },
       });
       await this.resolver.invalidate(updated.domains.map((d) => d.hostname));
+
+      await this.audit.record({
+        action: 'tenant.activated',
+        entityType: 'Tenant',
+        entityId: id,
+        tenantId: id,
+        changes: { from: tenant.status, to: TenantStatus.ACTIVE },
+      });
+
       return updated;
     });
   }

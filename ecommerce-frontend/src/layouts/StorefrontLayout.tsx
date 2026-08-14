@@ -6,6 +6,7 @@ import { useStore } from '@/features/theme/ThemeProvider';
 import { useCart } from '@/hooks/useCart';
 import { useCustomerStore } from '@/store/customer.store';
 import { categoryService } from '@/services/admin.service';
+import { apiClient, unwrap } from '@/services/api-client';
 
 /**
  * One layout, every template. Which sections render and in what order comes
@@ -27,6 +28,13 @@ export function StorefrontLayout() {
   const categories = useQuery({
     queryKey: ['storefront-categories'],
     queryFn: categoryService.tree,
+    staleTime: 5 * 60_000,
+  });
+
+  // Whatever the tenant has published: About, Contact, Terms.
+  const pages = useQuery({
+    queryKey: ['storefront-pages'],
+    queryFn: () => unwrap<{ slug: string; title: string }[]>(apiClient.get('/pages')),
     staleTime: 5 * 60_000,
   });
 
@@ -134,6 +142,16 @@ export function StorefrontLayout() {
             <Link to={customer ? '/account' : '/account/sign-in'} className="hover:text-brand">
               {customer ? 'Your account' : 'Sign in'}
             </Link>
+            {customer && (
+              <Link to="/wishlist" className="hover:text-brand">
+                Saved items
+              </Link>
+            )}
+            {(pages.data ?? []).map((page) => (
+              <Link key={page.slug} to={`/${page.slug}`} className="hover:text-brand">
+                {page.title}
+              </Link>
+            ))}
           </nav>
 
           <p className="mt-8 text-xs text-ink-500">

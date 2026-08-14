@@ -37,6 +37,17 @@
 		reverse_proxy backend:4000
 	}
 
+	# Per-tenant and generated from that store's catalogue, so these come from
+	# the API even though they sit at the domain root. The frontend is one
+	# bundle with no idea which store it is serving.
+	handle /sitemap.xml {
+		reverse_proxy backend:4000
+	}
+
+	handle /robots.txt {
+		reverse_proxy backend:4000
+	}
+
 	handle {
 		reverse_proxy frontend:80
 	}
@@ -65,6 +76,17 @@
 	}
 
 	handle /api/* {
+		reverse_proxy backend:4000
+	}
+
+	# Per-tenant and generated from that store's catalogue, so these come from
+	# the API even though they sit at the domain root. The frontend is one
+	# bundle with no idea which store it is serving.
+	handle /sitemap.xml {
+		reverse_proxy backend:4000
+	}
+
+	handle /robots.txt {
 		reverse_proxy backend:4000
 	}
 

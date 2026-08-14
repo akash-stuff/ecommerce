@@ -5,6 +5,12 @@ import { productService } from '@/services/store.service';
 import { useStore } from '@/features/theme/ThemeProvider';
 import { useAddToCart } from '@/hooks/useCart';
 import { ProductReviews } from '@/components/ProductReviews';
+import { SaveButton } from '@/components/SaveButton';
+import {
+  StructuredData,
+  breadcrumbSchema,
+  productSchema,
+} from '@/features/seo/StructuredData';
 import { formatMoney } from '@/utils/format';
 
 export default function ProductDetail() {
@@ -117,6 +123,8 @@ export default function ProductDetail() {
                 View cart
               </button>
             )}
+
+            <SaveButton productId={product.id} className="w-full justify-center sm:w-auto" />
           </div>
 
           {/* The server refuses over-stock adds, so show its reason rather than
@@ -128,6 +136,34 @@ export default function ProductDetail() {
           )}
         </div>
       </div>
+
+      {/* Google executes JavaScript before reading JSON-LD, so this works from
+          a client-rendered page. Social scrapers do not — that needs SSR. */}
+      <StructuredData
+        data={{
+          '@context': 'https://schema.org',
+          '@graph': [
+            productSchema({
+              name: product.name,
+              description: product.shortDescription,
+              sku: product.sku,
+              image: product.images[0]?.url ?? null,
+              price: String(Number(product.price)),
+              currency: store.currency,
+              inStock,
+              storeName: store.name,
+              ratingAverage: Number(product.ratingAverage),
+              ratingCount: product.ratingCount,
+              url: window.location.href,
+            }),
+            breadcrumbSchema([
+              { name: store.name, url: window.location.origin },
+              { name: 'Shop', url: `${window.location.origin}/shop` },
+              { name: product.name, url: window.location.href },
+            ]),
+          ],
+        }}
+      />
 
       <ProductReviews productId={product.id} />
     </div>

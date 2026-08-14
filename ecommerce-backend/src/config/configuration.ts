@@ -2,6 +2,19 @@ export default () => ({
   env: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.PORT ?? '4000', 10),
 
+  /**
+   * Global request throttle, per client IP.
+   *
+   * Configurable because the right number depends on deployment: a storefront
+   * page makes several API calls, so a low cap behind a shared NAT or CDN
+   * throttles real shoppers, while a public API wants it tight. Also lets a
+   * load test raise the ceiling instead of measuring the throttler.
+   */
+  throttle: {
+    ttlMs: Number(process.env.THROTTLE_TTL_MS ?? 60_000),
+    limit: Number(process.env.THROTTLE_LIMIT ?? 120),
+  },
+
   platform: {
     /** Apex domain for tenant subdomains: {slug}.{domain} */
     domain: process.env.PLATFORM_DOMAIN ?? 'platform.com',
