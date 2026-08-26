@@ -1,3 +1,4 @@
+import { ChevronLeft, ChevronRight, Inbox, SearchX } from 'lucide-react';
 import type { PaginationMeta } from '@/types/api';
 
 export interface Column<T> {
@@ -24,6 +25,7 @@ export function DataTable<T>({
   onPage,
   emptyTitle,
   emptyHint,
+  emptyAction,
   filtered,
   rowKey,
   onRowClick,
@@ -37,6 +39,8 @@ export function DataTable<T>({
   onPage?: (page: number) => void;
   emptyTitle: string;
   emptyHint?: string;
+  /** The thing to do about an empty table, when there is one. */
+  emptyAction?: React.ReactNode;
   /** True when a search or filter is active, which changes the empty message. */
   filtered?: boolean;
   rowKey: (row: T) => string;
@@ -44,27 +48,59 @@ export function DataTable<T>({
 }) {
   return (
     <>
-      <div className="overflow-hidden rounded-card border border-ink-100 bg-white">
-        {isLoading && <div className="p-8 text-sm text-ink-500">Loading…</div>}
+      <div className="overflow-hidden rounded-card border border-ink-100 bg-white shadow-card">
+        {/* Skeleton rows rather than the word "Loading", so the table does not
+            collapse to one line and then shove the page down when data lands.
+            The word is still announced, for anyone who cannot see the shimmer. */}
+        {isLoading && (
+          <div className="p-4" aria-busy="true">
+            <span className="sr-only">Loading…</span>
+            {Array.from({ length: 6 }).map((_, row) => (
+              <div
+                key={row}
+                className="flex items-center gap-4 border-b border-ink-50 py-3 last:border-0"
+              >
+                {columns.map((column, cell) => (
+                  <div
+                    key={column.header}
+                    className="skeleton h-3.5"
+                    // Varied widths: equal bars read as a chart, not as text.
+                    style={{ width: cell === 0 ? '28%' : `${Math.max(18 - cell * 2, 8)}%` }}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
 
         {isError && (
-          <div className="p-8 text-center">
-            <p className="text-sm text-ink-700">This couldn't be loaded.</p>
-            <button onClick={onRetry} className="mt-2 text-sm font-medium text-ink-950 underline">
+          <div className="px-6 py-12 text-center">
+            <p className="text-sm text-ink-700">This couldn&apos;t be loaded.</p>
+            <button
+              type="button"
+              onClick={onRetry}
+              className="mt-2 rounded px-1 text-sm font-medium text-ink-950 underline decoration-ink-300 underline-offset-2 hover:decoration-ink-950"
+            >
               Try again
             </button>
           </div>
         )}
 
         {rows && rows.length === 0 && (
-          <div className="p-12 text-center">
-            <p className="text-sm text-ink-700">
+          <div className="px-6 py-14 text-center">
+            <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-ink-50 text-ink-400">
+              {filtered ? <SearchX size={18} /> : <Inbox size={18} />}
+            </div>
+            <p className="text-sm font-medium text-ink-900">
               {filtered ? 'Nothing matches that search' : emptyTitle}
             </p>
             {(filtered || emptyHint) && (
-              <p className="mt-1 text-sm text-ink-500">
+              <p className="mx-auto mt-1 max-w-sm text-sm text-ink-500">
                 {filtered ? 'Try a different term or clear the filter.' : emptyHint}
               </p>
+            )}
+            {!filtered && emptyAction && (
+              <div className="mt-5 flex justify-center">{emptyAction}</div>
             )}
           </div>
         )}
@@ -72,10 +108,13 @@ export function DataTable<T>({
         {rows && rows.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-ink-100 text-xs uppercase tracking-wide text-ink-500">
-                <tr>
+              {/* Tinted rather than sticky: the wrapper scrolls horizontally,
+                  which makes it the containing block for a sticky header, and
+                  it has no constrained height to scroll vertically within. */}
+              <thead className="bg-ink-50/70 text-xs uppercase tracking-wide text-ink-500">
+                <tr className="border-b border-ink-100">
                   {columns.map((c) => (
-                    <th key={c.header} className={`px-4 py-3 font-medium ${c.className ?? ''}`}>
+                    <th key={c.header} className={`px-4 py-2.5 font-medium ${c.className ?? ''}`}>
                       {c.header}
                     </th>
                   ))}
@@ -86,12 +125,12 @@ export function DataTable<T>({
                   <tr
                     key={rowKey(row)}
                     onClick={onRowClick ? () => onRowClick(row) : undefined}
-                    className={`border-b border-ink-50 last:border-0 ${
+                    className={`border-b border-ink-50 transition-colors last:border-0 ${
                       onRowClick ? 'cursor-pointer hover:bg-ink-50' : ''
                     }`}
                   >
                     {columns.map((c) => (
-                      <td key={c.header} className={`px-4 py-3 ${c.className ?? ''}`}>
+                      <td key={c.header} className={`px-4 py-3 align-middle ${c.className ?? ''}`}>
                         {c.cell(row)}
                       </td>
                     ))}
@@ -104,24 +143,26 @@ export function DataTable<T>({
       </div>
 
       {meta && meta.totalPages > 1 && onPage && (
-        <div className="mt-4 flex items-center justify-between text-sm">
-          <span className="text-ink-500">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
+          <span className="numeric text-ink-500">
             Page {meta.page} of {meta.totalPages} · {meta.total} total
           </span>
           <div className="flex gap-2">
             <button
+              type="button"
               disabled={meta.page === 1}
               onClick={() => onPage(meta.page - 1)}
-              className="rounded-card border border-ink-100 bg-white px-3 py-1.5 disabled:opacity-40"
+              className="inline-flex h-8 items-center gap-1 rounded-card border border-ink-200 bg-white pl-2 pr-3 transition-colors hover:bg-ink-50 disabled:pointer-events-none disabled:opacity-40"
             >
-              Previous
+              <ChevronLeft size={14} /> Previous
             </button>
             <button
+              type="button"
               disabled={!meta.hasNext}
               onClick={() => onPage(meta.page + 1)}
-              className="rounded-card border border-ink-100 bg-white px-3 py-1.5 disabled:opacity-40"
+              className="inline-flex h-8 items-center gap-1 rounded-card border border-ink-200 bg-white pl-3 pr-2 transition-colors hover:bg-ink-50 disabled:pointer-events-none disabled:opacity-40"
             >
-              Next
+              Next <ChevronRight size={14} />
             </button>
           </div>
         </div>
@@ -133,27 +174,27 @@ export function DataTable<T>({
 /** Neutral by default; only states that need attention get colour. */
 export function StatusBadge({ value }: { value: string }) {
   const tone: Record<string, string> = {
-    active: 'bg-green-50 text-green-700',
-    paid: 'bg-green-50 text-green-700',
-    sent: 'bg-green-50 text-green-700',
-    delivered: 'bg-green-50 text-green-700',
-    queued: 'bg-amber-50 text-amber-800',
-    confirmed: 'bg-blue-50 text-blue-700',
-    shipped: 'bg-blue-50 text-blue-700',
-    pending: 'bg-amber-50 text-amber-800',
-    failed: 'bg-red-50 text-red-700',
-    cancelled: 'bg-red-50 text-red-700',
-    refunded: 'bg-red-50 text-red-700',
-    archived: 'bg-ink-100 text-ink-500',
-    retired: 'bg-ink-100 text-ink-500',
-    draft: 'bg-ink-100 text-ink-500',
+    active: 'bg-green-50 text-green-700 ring-green-600/15',
+    paid: 'bg-green-50 text-green-700 ring-green-600/15',
+    sent: 'bg-green-50 text-green-700 ring-green-600/15',
+    delivered: 'bg-green-50 text-green-700 ring-green-600/15',
+    queued: 'bg-amber-50 text-amber-800 ring-amber-600/15',
+    confirmed: 'bg-blue-50 text-blue-700 ring-blue-600/15',
+    shipped: 'bg-blue-50 text-blue-700 ring-blue-600/15',
+    pending: 'bg-amber-50 text-amber-800 ring-amber-600/15',
+    failed: 'bg-red-50 text-red-700 ring-red-600/15',
+    cancelled: 'bg-red-50 text-red-700 ring-red-600/15',
+    refunded: 'bg-red-50 text-red-700 ring-red-600/15',
+    archived: 'bg-ink-100 text-ink-500 ring-ink-950/10',
+    retired: 'bg-ink-100 text-ink-500 ring-ink-950/10',
+    draft: 'bg-ink-100 text-ink-500 ring-ink-950/10',
   };
 
   const key = value.toLowerCase();
   return (
     <span
-      className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs capitalize ${
-        tone[key] ?? 'bg-ink-50 text-ink-700'
+      className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs capitalize ring-1 ring-inset ${
+        tone[key] ?? 'bg-ink-50 text-ink-700 ring-ink-950/10'
       }`}
     >
       {key.replace(/_/g, ' ')}

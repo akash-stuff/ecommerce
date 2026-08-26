@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
 import { productService } from '@/services/store.service';
 import { categoryService } from '@/services/admin.service';
 import { apiClient, unwrap } from '@/services/api-client';
@@ -97,7 +96,16 @@ export default function ProductForm() {
       // validation rather than fall back.
       if (draft.slug) payload.slug = draft.slug;
 
-      if (draft.imageUrls.length > 0) payload.imageUrls = draft.imageUrls;
+      /**
+       * Always sent when editing, including as an empty array.
+       *
+       * The API treats an absent `imageUrls` as "not editing images" and a
+       * present one as the new gallery, so gating on length made removing the
+       * last image impossible — the request simply omitted the field and the
+       * old row stayed. On create there is nothing to clear, so an empty array
+       * is skipped to keep the payload honest.
+       */
+      if (isEdit || draft.imageUrls.length > 0) payload.imageUrls = draft.imageUrls;
 
       return isEdit ? productService.update(id!, payload) : productService.create(payload);
     },
@@ -114,14 +122,7 @@ export default function ProductForm() {
     <Page
       title={isEdit ? draft.name || 'Edit product' : 'New product'}
       subtitle={isEdit ? draft.sku : 'Add something to your catalogue'}
-      action={
-        <button
-          onClick={() => navigate('/admin/products')}
-          className="flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-900"
-        >
-          <ArrowLeft size={15} /> All products
-        </button>
-      }
+      back={{ to: '/admin/products', label: 'All products' }}
     >
       {isEdit && existing.isLoading ? (
         <p className="text-sm text-ink-500">Loading…</p>

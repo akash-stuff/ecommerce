@@ -1,0 +1,111 @@
+# Caddy terminates TLS for the whole platform and proxies to the two services.
+#
+# Two different certificate strategies, because the platform has two kinds of
+# hostname:
+#
+#   *.platform.com   — one wildcard certificate, issued via a DNS-01 challenge.
+#                      HTTP-01 cannot issue wildcards.
+#   shop.acme.com    — a tenant's own domain. There is no way to know these in
+#                      advance, so Caddy requests certificates on demand and
+#                      asks the API whether each hostname is a real store first.
+#
+# The `ask` endpoint is what stops the platform being used to burn ACME rate
+# limits: without it, anyone could point DNS at this server and make it request
+# certificates for names it knows nothing about.
+
+{
+	email {$ACME_EMAIL}
+
+	on_demand_tls {
+		ask http://backend:4000/api/v1/tls/check
+		interval 2m
+		burst 5
+	}
+}
+
+# --- Platform: apex, admin console and tenant subdomains ---------------------
+
+{$PLATFORM_DOMAIN}, *.{$PLATFORM_DOMAIN} {
+	tls {
+		dns {$DNS_PROVIDER} {$DNS_API_TOKEN}
+	}
+
+	# The API lives under /api on every hostname. That is deliberate: the
+	# backend reads the tenant from the Host header, so a storefront request
+	# has to arrive on the tenant's own hostname (see docs/ENVIRONMENT.md).
+	handle /api/* {
+		reverse_proxy backend:4000
+	}
+
+	# Per-tenant and generated from that store's catalogue, so these come from
+	# the API even though they sit at the domain root. The frontend is one
+	# bundle with no idea which store it is serving.
+	handle /sitemap.xml {
+		reverse_proxy backend:4000
+	}
+
+	handle /robots.txt {
+		reverse_proxy backend:4000
+	}
+
+	handle {
+		reverse_proxy frontend:5173
+	}
+
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}
+
+# --- Tenant custom domains ---------------------------------------------------
+
+:443 {
+	tls {
+		on_demand
+	}
+
+	handle /api/* {
+		reverse_proxy backend:4000
+	}
+
+	# Per-tenant and generated from that store's catalogue, so these come from
+	# the API even though they sit at the domain root. The frontend is one
+	# bundle with no idea which store it is serving.
+	handle /sitemap.xml {
+		reverse_proxy backend:4000
+	}
+
+	handle /robots.txt {
+		reverse_proxy backend:4000
+	}
+
+	handle {
+		reverse_proxy frontend:5173
+	}
+
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	log {
+		output stdout
+		format json
+	}
+}

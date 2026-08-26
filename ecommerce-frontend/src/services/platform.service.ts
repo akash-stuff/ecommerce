@@ -37,6 +37,10 @@ export interface TemplateTheme {
   accentColor?: string;
   bodyFont?: string;
   headingFont?: string;
+  /** Named page background the template ships with. */
+  background?: string;
+  /** Header logo height that suits the template's proportions. */
+  logoSize?: string;
 }
 
 export interface PlatformTemplate {
@@ -141,7 +145,12 @@ export const platformService = {
   templateGallery: () => unwrap<TemplateChoice[]>(apiClient.get('/platform/templates/gallery')),
 
   templateOptions: () =>
-    unwrap<{ fonts: string[]; sections: string[] }>(
+    unwrap<{
+        fonts: string[];
+        sections: string[];
+        backgrounds: string[];
+        logoSizes: string[];
+      }>(
       apiClient.get('/platform/templates/options'),
     ),
 

@@ -70,16 +70,43 @@ quarterly is more useful than an annual plan nobody follows.
 3. Restart the API. Postgres keeps existing connections alive, so there is no
    dropped-request window if you restart rather than kill.
 
-### Razorpay keys and webhook secret
+### Tenant gateway credentials
 
-Test and live keys are configured independently in their dashboard, so rotate
-one without touching the other. **Create the new webhook secret before removing
-the old one** — an unsigned webhook is rejected, and Razorpay retries, but a gap
-means captured payments arrive at an API that will not accept them.
+These are not ours. Each store enters its own Razorpay keys in Admin →
+Payments, and they are stored as AES-256-GCM envelopes in
+`payment_gateways.secrets` — never in the environment, never in an audit log
+(only *which* fields changed is recorded), and never returned by the API. The
+admin is told which secrets are set, not what they are.
+
+Each envelope is bound with additional authenticated data to the tenant,
+provider and field it was stored under. One key encrypts every tenant's
+secrets, so without that binding a ciphertext copied into another store's row
+would decrypt cleanly and point that store's payments at the wrong merchant
+account.
+
+Rotating a store's own keys is that store's business: it re-enters them, and
+**creates the new webhook secret before removing the old one** — an unsigned
+webhook is rejected, and Razorpay retries, but a gap means captured payments
+arrive at an API that will not accept them.
+
+### CREDENTIALS_ENCRYPTION_KEY
+
+The key those envelopes are sealed with. 32 bytes, base64 or hex, validated at
+boot — the process refuses to start without a usable one.
+
+**Rotating it makes every stored gateway secret unreadable.** There is no
+re-encryption pass. A secret that will not open is treated as absent, so the
+affected store's gateway reports itself unconfigured, stops being offered at
+checkout, and the owner has to re-enter the keys. Plan the rotation as an
+announced event, not a config edit. It belongs in a secret manager: it is the
+one value that, together with a database dump, yields live merchant
+credentials for every tenant on the platform.
 
 ### SMTP credentials
 
-Rotate at the provider, update `SMTP_PASSWORD`, restart. Failed sends are
+Rotate at the provider, update `SMTP_PASSWORD`, restart. For Gmail this means
+revoking the App Password and issuing a new one; the account password is never
+used. Failed sends are
 recorded rather than lost: the admin **Notifications** screen has a retry that
 replays the exact message once credentials work again.
 
@@ -171,5 +198,8 @@ entity obfuscation (`java&#09;script:`), event handlers, `@import`, and
 - **No RLS**, for the reasons above.
 - **CSRF** is not needed for the current bearer-token flow, but becomes
   **required** if the planned httpOnly cookie path for customers is adopted.
-- **Image uploads** are URLs typed into the admin. Wiring real object storage
-  brings its own surface — content-type validation and a separate origin.
+- **Image uploads** are served from the API's own origin when S3 is
+  unconfigured. The stored content-type is decided by the file's magic bytes
+  rather than its declared type, and SVG is refused outright, so an upload
+  cannot become script on that origin — but a separate asset origin is still
+  the stronger arrangement and is not yet in place.

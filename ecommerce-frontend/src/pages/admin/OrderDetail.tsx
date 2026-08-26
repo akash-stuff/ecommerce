@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, unwrap } from '@/services/api-client';
-import { ArrowLeft } from 'lucide-react';
 import { orderService } from '@/services/admin.service';
 import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { StatusBadge } from '@/components/admin/DataTable';
@@ -37,7 +36,6 @@ const NEXT_STATUS: Record<string, string[]> = {
 
 export default function OrderDetail() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [cancelling, setCancelling] = useState(false);
   const [reason, setReason] = useState('');
@@ -128,14 +126,7 @@ export default function OrderDetail() {
     <Page
       title={order.orderNumber}
       subtitle={`Placed ${new Date(order.placedAt).toLocaleString()} · ${order.customerEmail}`}
-      action={
-        <button
-          onClick={() => navigate('/admin/orders')}
-          className="flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-900"
-        >
-          <ArrowLeft size={15} /> All orders
-        </button>
-      }
+      back={{ to: '/admin/orders', label: 'All orders' }}
     >
       <div className="flex flex-wrap items-center gap-3">
         <StatusBadge value={order.status} />

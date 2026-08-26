@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ChevronRight, Pencil, Trash2 } from 'lucide-react';
+import { ChevronRight, ImageOff, Pencil, Tags, Trash2 } from 'lucide-react';
 import { categoryService } from '@/services/admin.service';
-import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
+import { EmptyState, Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
+import { ImageUpload } from '@/components/admin/ImageUpload';
 import {
   Field,
   FormError,
@@ -20,10 +21,18 @@ interface Draft {
   slug: string;
   parentId: string;
   description: string;
+  imageUrl: string;
   isActive: boolean;
 }
 
-const empty: Draft = { name: '', slug: '', parentId: '', description: '', isActive: true };
+const empty: Draft = {
+  name: '',
+  slug: '',
+  parentId: '',
+  description: '',
+  imageUrl: '',
+  isActive: true,
+};
 
 export default function Categories() {
   const queryClient = useQueryClient();
@@ -44,6 +53,9 @@ export default function Categories() {
         slug: d.slug || undefined,
         parentId: d.parentId || undefined,
         description: d.description || undefined,
+        // Empty string, not undefined: an omitted field leaves the old image in
+        // place, which is not what removing one means.
+        imageUrl: d.imageUrl,
         isActive: d.isActive,
       };
       return d.id ? categoryService.update(d.id, payload) : categoryService.create(payload);
@@ -67,24 +79,41 @@ export default function Categories() {
       subtitle="How your catalogue is organised for shoppers"
       action={<PrimaryButton onClick={() => setDraft(empty)}>Add category</PrimaryButton>}
     >
-      <div className="overflow-hidden rounded-card border border-ink-100 bg-white">
-        {tree.isLoading && <div className="p-8 text-sm text-ink-500">Loading…</div>}
+      {/* The empty state carries its own dashed frame, so it replaces the list
+          surface rather than sitting inside it. */}
+      {tree.data?.length === 0 && (
+        <EmptyState
+          icon={<Tags size={18} />}
+          title="No categories yet"
+          hint="Group your products so shoppers can browse them."
+          action={<PrimaryButton onClick={() => setDraft(empty)}>Add category</PrimaryButton>}
+        />
+      )}
 
-        {tree.isError && (
-          <div className="p-8 text-center">
-            <p className="text-sm text-ink-700">Categories couldn't be loaded.</p>
-            <button onClick={() => tree.refetch()} className="mt-2 text-sm underline">
-              Try again
-            </button>
+      {tree.data?.length !== 0 && (
+      <div className="overflow-hidden rounded-card border border-ink-100 bg-white shadow-card">
+        {tree.isLoading && (
+          <div className="space-y-3 p-4" aria-busy="true">
+            <span className="sr-only">Loading…</span>
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-3">
+                <div className="skeleton h-7 w-7 shrink-0" />
+                <div className="skeleton h-3" style={{ width: `${34 - i * 4}%` }} />
+              </div>
+            ))}
           </div>
         )}
 
-        {tree.data?.length === 0 && (
-          <div className="p-12 text-center">
-            <p className="text-sm text-ink-700">No categories yet</p>
-            <p className="mt-1 text-sm text-ink-500">
-              Group your products so shoppers can browse them.
-            </p>
+        {tree.isError && (
+          <div className="p-8 text-center">
+            <p className="text-sm text-ink-700">Categories couldn&apos;t be loaded.</p>
+            <button
+              type="button"
+              onClick={() => tree.refetch()}
+              className="mt-2 text-sm font-medium text-ink-950 underline decoration-ink-300 underline-offset-2 hover:decoration-ink-950"
+            >
+              Try again
+            </button>
           </div>
         )}
 
@@ -92,9 +121,22 @@ export default function Categories() {
           <ul className="divide-y divide-ink-50">
             {flat.map(({ node, depth }) => (
               <li key={node.id} className="flex items-center gap-3 px-4 py-3 text-sm">
-                <span style={{ paddingLeft: depth * 20 }} className="flex items-center gap-2">
-                  {depth > 0 && <ChevronRight size={13} className="text-ink-300" />}
-                  <span className={node.isActive ? 'text-ink-900' : 'text-ink-500 line-through'}>
+                <span style={{ paddingLeft: depth * 20 }} className="flex min-w-0 items-center gap-2">
+                  {depth > 0 && <ChevronRight size={13} className="shrink-0 text-ink-300" />}
+                  {node.imageUrl ? (
+                    <img
+                      src={node.imageUrl}
+                      alt=""
+                      className="h-7 w-7 shrink-0 rounded object-cover"
+                    />
+                  ) : (
+                    <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-ink-50 text-ink-300">
+                      <ImageOff size={12} />
+                    </span>
+                  )}
+                  <span
+                    className={`truncate ${node.isActive ? 'text-ink-900' : 'text-ink-500 line-through'}`}
+                  >
                     {node.name}
                   </span>
                 </span>
@@ -110,6 +152,7 @@ export default function Categories() {
                         slug: node.slug,
                         parentId: node.parentId ?? '',
                         description: node.description ?? '',
+                        imageUrl: node.imageUrl ?? '',
                         isActive: node.isActive,
                       })
                     }
@@ -131,6 +174,7 @@ export default function Categories() {
           </ul>
         )}
       </div>
+      )}
 
       {draft && (
         <Modal
@@ -186,6 +230,20 @@ export default function Categories() {
                 onChange={(e) => setDraft({ ...draft, description: e.target.value })}
               />
             </Field>
+
+            <div className="sm:col-span-2">
+              <p className="text-sm font-medium text-ink-700">Image</p>
+              <p className="mb-2 mt-0.5 text-xs text-ink-500">
+                Shown on the category grid and at the top of the category page.
+              </p>
+              <ImageUpload
+                label="image"
+                purpose="category"
+                aspect="wide"
+                value={draft.imageUrl}
+                onChange={(url) => setDraft({ ...draft, imageUrl: url })}
+              />
+            </div>
 
             <Field label="Visible to shoppers">
               <Select

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- On a server-rendered storefront request this comment is replaced with the
+         real head: title, description, canonical, Open Graph tags, the tenant's
+         theme variables and JSON-LD. On the admin console, which is not server
+         rendered, it stays a comment and ThemeProvider fills the head at runtime. -->
+    <title>Store</title>
+    <link rel="icon" href="/favicon.svg" />
+    <!--app-head-->
+  </head>
+  <body>
+    <div id="root"><!--app-html--></div>
+    <!--app-state-->
+    <script type="module" src="/src/entry-client.tsx"></script>
+  </body>
+</html>

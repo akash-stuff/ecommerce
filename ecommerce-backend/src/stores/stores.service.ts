@@ -2,6 +2,13 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { StoreConfigDto, StoreThemeDto } from './dto/store.dto';
 import { sanitiseCustomCss } from '../theme/css-sanitiser';
+import {
+  BACKGROUND_FITS,
+  BACKGROUND_PRESETS,
+  DEFAULT_BACKGROUND,
+  DEFAULT_LOGO_SIZE,
+  LOGO_SIZES,
+} from '../theme/backgrounds';
 
 /**
  * Serves the branding payload the storefront fetches before it renders
@@ -69,6 +76,10 @@ type ThemeRow = {
   secondaryColor: string;
   bodyFont: string;
   headingFont: string;
+  logoSize: string;
+  background: string;
+  backgroundImageUrl: string | null;
+  backgroundFit: string;
   socialLinks: unknown;
   homepageLayout: unknown;
   customCss: string | null;
@@ -86,6 +97,18 @@ function toThemeDto(theme: ThemeRow): StoreThemeDto {
     secondaryColor: theme?.secondaryColor ?? '#6B7280',
     bodyFont: theme?.bodyFont ?? 'Inter',
     headingFont: theme?.headingFont ?? 'Inter',
+    /**
+     * Re-checked against the allowlists rather than passed through.
+     *
+     * A row written before a preset was renamed — or edited directly — would
+     * otherwise name a background the storefront cannot draw, and the page
+     * would render with no surface colour at all. Falling back to the default
+     * is a plain page, which is a recoverable outcome.
+     */
+    logoSize: oneOf(theme?.logoSize, LOGO_SIZES, DEFAULT_LOGO_SIZE),
+    background: oneOf(theme?.background, BACKGROUND_PRESETS, DEFAULT_BACKGROUND),
+    backgroundImageUrl: theme?.backgroundImageUrl ?? null,
+    backgroundFit: oneOf(theme?.backgroundFit, BACKGROUND_FITS, 'cover'),
     socialLinks: asStringMap(theme?.socialLinks),
     homepageLayout: asStringArray(theme?.homepageLayout),
     customCss: safeCustomCss(theme?.customCss),
@@ -103,4 +126,13 @@ function asStringMap(value: unknown): Record<string, string> {
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string') : [];
+}
+
+/** The value when the allowlist recognises it, the default when it does not. */
+function oneOf<T extends string>(
+  value: string | null | undefined,
+  allowed: readonly T[],
+  fallback: T,
+): T {
+  return value && (allowed as readonly string[]).includes(value) ? (value as T) : fallback;
 }

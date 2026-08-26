@@ -138,6 +138,16 @@ export class ProductsService {
 
   async create(dto: CreateProductDto) {
     const { imageUrls, variants, ...rest } = dto;
+    /**
+     * Stamped explicitly on the nested rows.
+     *
+     * The tenant-scope extension intercepts the *operation* — `product.create`
+     * — so it fills in the product's own tenantId and knows nothing about rows
+     * written through a relation. `ProductImage.tenantId` and
+     * `ProductVariant.tenantId` are both required, so a nested create without
+     * this fails with `Argument 'tenantId' is missing`.
+     */
+    const tenantId = RequestContextStore.requireTenantId();
 
     return this.prisma.db.product.create({
       // tenantId is injected by the tenant-scope extension at runtime, so the
@@ -147,25 +157,53 @@ export class ProductsService {
         slug: dto.slug ?? slugify(dto.name),
         tags: dto.tags?.map((t) => t.toLowerCase()) ?? [],
         images: imageUrls?.length
-          ? { create: imageUrls.map((url, position) => ({ url, position })) }
+          ? { create: imageUrls.map((url, position) => ({ url, position, tenantId })) }
           : undefined,
-        variants: variants?.length ? { create: variants } : undefined,
+        variants: variants?.length
+          ? { create: variants.map((v) => ({ ...v, tenantId })) }
+          : undefined,
       } as unknown as Prisma.ProductCreateInput,
       include: { images: true, variants: true },
     });
   }
 
+  /**
+   * `imageUrls` replaces the product's images outright when present, and is left
+   * alone when absent.
+   *
+   * Replace rather than merge because the array *is* the gallery, in order:
+   * `images[0]` is the thumbnail the storefront and the admin list both show, so
+   * a reorder or a removal has to be expressible. An absent field still means
+   * "not editing images", which is what a partial update from another screen
+   * sends.
+   *
+   * `variants` is deliberately still ignored here. There is no UI that edits
+   * them, and inventing replace-semantics for rows that orders reference by id
+   * would risk deleting a variant an order line points at.
+   */
   async update(id: string, dto: UpdateProductDto) {
     await this.findOne(id); // 404s if it belongs to another tenant
-    const { imageUrls, variants, ...rest } = dto;
+    const { imageUrls, variants: _variants, ...rest } = dto;
+    const tenantId = RequestContextStore.requireTenantId();
 
     return this.prisma.db.product.update({
       where: { id },
       data: {
         ...rest,
         ...(dto.tags ? { tags: dto.tags.map((t) => t.toLowerCase()) } : {}),
+        ...(imageUrls
+          ? {
+              images: {
+                // Ordered by array position, so the old rows have to go rather
+                // than be updated in place — there is no stable key to match on
+                // when a URL moves from position 2 to position 0.
+                deleteMany: {},
+                create: imageUrls.map((url, position) => ({ url, position, tenantId })),
+              },
+            }
+          : {}),
       },
-      include: { images: true, variants: true },
+      include: { images: { orderBy: { position: 'asc' } }, variants: true },
     });
   }
 

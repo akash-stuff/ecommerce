@@ -8,8 +8,10 @@ import { SmsService } from './sms.service';
 import { orderPlacedSms, orderStatusSms } from './sms-templates';
 import {
   customerWelcome,
+  emailVerificationCode,
   orderConfirmation,
   orderStatusChanged,
+  storeSetup,
   type OrderEmailData,
   type RenderedEmail,
   type StatusEmailData,
@@ -114,6 +116,68 @@ export class NotificationsService {
       to,
       payload: {},
       rendered: customerWelcome(data),
+    });
+  }
+
+  /**
+   * The verification code, sent before an account exists.
+   *
+   * Awaited by the caller rather than fire-and-forget, unlike the welcome mail:
+   * registration cannot report success if the code never went out, or the
+   * shopper is left staring at a form waiting for an email that failed.
+   *
+   * The code is passed through to the template and deliberately kept out of
+   * `payload` — that column is stored, and a stored code is a code that outlives
+   * the ten minutes it was supposed to be usable for. The rendered body is
+   * stored, which is unavoidable if a failed send is to be replayable, and is
+   * why `forget()` clears the challenge as soon as it is spent.
+   */
+  emailVerificationCode(
+    to: string,
+    tenantId: string,
+    data: {
+      storeName: string;
+      storeEmail: string;
+      code: string;
+      expiresInMinutes: number;
+    },
+  ) {
+    return this.deliverEmail({
+      tenantId,
+      event: 'customer.emailVerification',
+      to,
+      payload: { expiresInMinutes: data.expiresInMinutes },
+      rendered: emailVerificationCode(data),
+    });
+  }
+
+  /**
+   * The email that tells a new store owner their store exists.
+   *
+   * Awaited by the caller and allowed to fail *without* failing provisioning:
+   * the store, its theme, its domain and its owner are already committed by the
+   * time this runs, so throwing here would report a failure for work that
+   * succeeded. A store with no welcome email is recoverable — the platform
+   * console can resend it — while a rolled-back store is not.
+   */
+  storeSetup(
+    to: string,
+    tenantId: string,
+    data: {
+      storeName: string;
+      ownerName: string;
+      adminUrl: string;
+      storefrontUrl: string;
+      platformName: string;
+      supportEmail: string;
+    },
+  ) {
+    return this.deliverEmail({
+      tenantId,
+      event: 'store.setup',
+      to,
+      payload: { adminUrl: data.adminUrl, storefrontUrl: data.storefrontUrl },
+      rendered: storeSetup({ ...data, email: to }),
     });
   }
 

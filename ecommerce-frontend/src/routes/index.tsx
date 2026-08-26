@@ -34,6 +34,7 @@ const AdminReviews = lazy(() => import('@/pages/admin/Reviews'));
 const AdminCustomers = lazy(() => import('@/pages/admin/Customers'));
 const AdminCustomerDetail = lazy(() => import('@/pages/admin/CustomerDetail'));
 const AdminSettings = lazy(() => import('@/pages/admin/Settings'));
+const AdminPayments = lazy(() => import('@/pages/admin/Payments'));
 const AdminAnalytics = lazy(() => import('@/pages/admin/Analytics'));
 const AdminPages = lazy(() => import('@/pages/admin/Pages'));
 const PlatformOverview = lazy(() => import('@/pages/platform/Overview'));
@@ -106,6 +107,7 @@ export const router = createBrowserRouter([
           { path: 'customers/:id', element: wrap(<AdminCustomerDetail />) },
           { path: 'analytics', element: wrap(<AdminAnalytics />) },
           { path: 'settings', element: wrap(<AdminSettings />) },
+          { path: 'payments', element: wrap(<AdminPayments />) },
           { path: 'pages', element: wrap(<AdminPages />) },
         ],
       },

@@ -24,8 +24,8 @@ exist, logic pending · **Designed** schema and docs only · **Not started**
 | 5 | Super admin | **Built** | Platform console: cross-tenant overview, store provisioning and suspension, plan management, template management and audit log |
 | 6 | Tenant admin | **Built** | Every nav item resolves: dashboard, products, categories, inventory, orders, customers, coupons, shipping, notifications, reviews, pages, appearance, banners, analytics and settings |
 | 7 | Store creation | **Built** | Transactional: tenant + store + theme + domain + owner |
-| 8 | White-label customization | **Built** | Runtime CSS variables, per-tenant fonts, favicon, meta, and an admin editor with sanitised custom CSS |
-| 9 | Template system | **Built** | 8 templates with distinct tokens; all five homepage sections implemented and driven by `Theme.homepageLayout`. Super admins can add, edit and retire templates, with the same font and section allowlists the tenant editor enforces |
+| 8 | White-label customization | **Built** | Runtime CSS variables, per-tenant fonts, favicon, meta, and an admin editor with sanitised custom CSS, orderable homepage sections, uploadable logo and favicon, and a template picker |
+| 9 | Template system | **Built** | 14 templates differing in palette, type *and* which homepage sections appear and in what order, driven by `Theme.homepageLayout`. Super admins can add, edit and retire templates — with a generated preview of the layout, an uploadable thumbnail, and the same font and section allowlists the tenant editor enforces. A store owner can also switch their own store to another template from Appearance; values are copied, so no live storefront changes when a template is edited. All three adoption paths (provisioning, seed, switching) read a template row through `templateLook`, which re-checks it against the allowlists on the way out |
 | 10 | Customer storefront | **Built** | Home (configurable sections), shop/search/category browse, product detail with reviews, wishlist, cart, checkout, confirmation, sign-in, account and tenant-authored CMS pages |
 | 11 | Product management | **Built** | Backend CRUD + variants + images; admin create/edit form with drag-free image reordering and real file upload |
 | 12 | Category management | **Built** | Nested tree with cycle, depth, cross-tenant-parent and in-use guards |
@@ -33,7 +33,7 @@ exist, logic pending · **Designed** schema and docs only · **Not started**
 | 14 | Cart | **Built** | Guest (token) + customer carts, merge on sign-in, totals recomputed on every read and never stored |
 | 15 | Checkout | **Built** | One transaction: reprice, revalidate coupon, deduct stock, snapshot line items, empty cart. Totals computed server-side from DB prices only |
 | 16 | Order management | **Built** | 8 statuses with an explicit transition table; cancelling restocks and releases the coupon |
-| 17 | Payment architecture | **Built** | Provider interface + COD (working) + Razorpay (signature verification tested; order creation needs live keys). Webhooks verified and replay-safe |
+| 17 | Payment architecture | **Built** | Provider interface + COD + Razorpay, configured **per store**: each tenant connects its own merchant account from Admin → Payments, so settlements reach that store's bank rather than the platform's. Secrets are AES-256-GCM encrypted at rest, bound to the tenant and field, and never returned by the API. Both methods are opt-in, so a store can decline cash or take cash only. Webhooks resolve the tenant from the payment the payload names, then verify against *that* store's secret; replay-safe as before. Razorpay order creation needs live keys |
 | 18 | Shipping | **Built** | Zones and methods with most-specific-wins matching, rate quoting, admin UI, and shipment records that keep the order status and the parcel in step |
 | 19 | Coupons | **Built** | Every restriction enforced, per-line allocation for scoped coupons, redemption claimed atomically |
 | 20 | Customer management | **Built** | Self-service registration, sign-in, order history and cancellation; admin list, detail with addresses and spend, and deactivation |
@@ -81,7 +81,7 @@ exist, logic pending · **Designed** schema and docs only · **Not started**
 | Secrets never exposed to frontend | Built |
 | Unpublished data not exposed | Built — the public product list serves ACTIVE only; drafts require `products.read` |
 | Upload validation | Built — the file's magic bytes decide its type, not the declared `Content-Type` or filename, so a `.png` that is really HTML is refused rather than served from the store's own origin. SVG is excluded on purpose |
-| Upload keys | Built — generated as `tenants/<id>/<purpose>/<month>/<uuid>.<ext>`, never derived from the uploaded filename, so traversal and cross-tenant collision are both structurally impossible |
+| Upload keys | Built — generated as `tenants/<id>/<purpose>/<month>/<uuid>.<ext>`, never derived from the uploaded filename, so traversal and cross-tenant collision are both structurally impossible. Platform assets (template thumbnails) go to `platform/<purpose>/…` through a separate `@PlatformOnly` route, because the tenant prefix cannot be built where there is no tenant |
 | Banner link sanitisation | Built — `linkUrl` becomes an `href`, so `javascript:`, `data:` and protocol-relative URLs are dropped on write, the same rule the theme's social links follow |
 
 **Not yet done and worth flagging:** no Postgres row-level security and no

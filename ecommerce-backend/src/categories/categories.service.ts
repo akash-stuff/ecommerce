@@ -67,6 +67,10 @@ export class CategoriesService {
         parentId: true,
         name: true,
         slug: true,
+        // Selected because the admin edit form is populated from this tree —
+        // omitting it made the description box open blank on a category that
+        // had one, which reads as the text having been lost.
+        description: true,
         imageUrl: true,
         position: true,
         isActive: true,
@@ -117,7 +121,7 @@ export class CategoriesService {
 
     return this.prisma.db.category.create({
       // tenantId is injected by the tenant-scope extension at runtime.
-      data: { ...dto, slug } as unknown as Prisma.CategoryCreateInput,
+      data: { ...normaliseImage(dto), slug } as unknown as Prisma.CategoryCreateInput,
     });
   }
 
@@ -138,7 +142,7 @@ export class CategoriesService {
 
     return this.prisma.db.category.update({
       where: { id },
-      data: dto as Prisma.CategoryUpdateInput,
+      data: normaliseImage(dto) as Prisma.CategoryUpdateInput,
     });
   }
 
@@ -264,6 +268,17 @@ export function buildTree(rows: CategoryRow[]): CategoryNode[] {
     else roots.push(node);
   }
   return roots;
+}
+
+/**
+ * An empty `imageUrl` means "no image", which is null in the column — storing
+ * the empty string instead puts `<img src="">` on the storefront, and a browser
+ * resolves that to the page's own URL and then fails to decode the HTML as an
+ * image. Distinct from an *absent* field, which must leave the image alone.
+ */
+function normaliseImage<T extends { imageUrl?: string }>(dto: T) {
+  if (dto.imageUrl === undefined) return dto;
+  return { ...dto, imageUrl: dto.imageUrl.trim() || null };
 }
 
 function slugify(value: string): string {

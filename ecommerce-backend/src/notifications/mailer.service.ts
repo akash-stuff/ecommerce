@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createTransport, type Transporter } from 'nodemailer';
 
@@ -18,11 +18,57 @@ export type SendResult =
  * checked without standing up a mail server.
  */
 @Injectable()
-export class MailerService implements OnModuleDestroy {
+export class MailerService implements OnModuleDestroy, OnModuleInit {
   private readonly logger = new Logger(MailerService.name);
   private transporter: Transporter | null = null;
 
   constructor(private readonly config: ConfigService) {}
+
+  /**
+   * Says at boot what the mailer will actually do, and warns about the one
+   * Gmail misconfiguration that fails silently.
+   *
+   * Gmail rewrites a From address the account is not authorised to use to the
+   * authenticated account itself. Nothing errors — receipts simply arrive from
+   * a different sender than intended, which is usually discovered by a customer
+   * rather than by whoever set it up.
+   */
+  onModuleInit(): void {
+    if (!this.isConfigured()) {
+      this.logger.warn('SMTP is not configured — email will be logged, not sent.');
+      return;
+    }
+
+    const host = this.config.get<string>('smtp.host') ?? '';
+    const user = this.config.get<string>('smtp.user');
+    this.logger.log(`Email will be sent via ${host} as ${this.from}`);
+
+    /**
+     * A From with no address at all — a bare display name like
+     * `No-reply My Store`. It looks configured, and it is not: SMTP needs an
+     * address, so the message is either refused or silently re-addressed. The
+     * RFC 5322 form is `Display Name <address@example.com>`.
+     */
+    if (!/@/.test(this.from)) {
+      this.logger.error(
+        `SMTP_FROM ("${this.from}") contains no email address. Use ` +
+          `'Display Name <${user ?? 'you@example.com'}>', or leave it blank to send as SMTP_USER.`,
+      );
+    }
+
+    const gmail = /(^|\.)gmail\.com$|(^|\.)googlemail\.com$/i.test(host);
+    if (gmail && user && !this.from.toLowerCase().includes(user.toLowerCase())) {
+      this.logger.warn(
+        `SMTP_FROM (${this.from}) is not SMTP_USER (${user}). Gmail will rewrite ` +
+          'the sender to the authenticated account unless it is a verified alias.',
+      );
+    }
+    if (gmail && !this.config.get<string>('smtp.password')) {
+      this.logger.warn(
+        'Gmail needs an App Password, not the account password, and SMTP_PASSWORD is empty.',
+      );
+    }
+  }
 
   isConfigured(): boolean {
     return Boolean(this.config.get<string>('smtp.host'));

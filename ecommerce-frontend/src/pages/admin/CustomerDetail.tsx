@@ -1,6 +1,5 @@
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ArrowLeft } from 'lucide-react';
 import { apiClient, unwrap } from '@/services/api-client';
 import { Page, SecondaryButton } from '@/components/admin/Page';
 import { StatusBadge } from '@/components/admin/DataTable';
@@ -47,7 +46,6 @@ interface CustomerDetail {
 
 export default function CustomerDetail() {
   const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
   const queryClient = useQueryClient();
 
   const query = useQuery({
@@ -86,14 +84,7 @@ export default function CustomerDetail() {
     <Page
       title={`${c.firstName} ${c.lastName ?? ''}`.trim()}
       subtitle={c.email}
-      action={
-        <button
-          onClick={() => navigate('/admin/customers')}
-          className="flex items-center gap-1.5 text-sm text-ink-500 hover:text-ink-900"
-        >
-          <ArrowLeft size={15} /> All customers
-        </button>
-      }
+      back={{ to: '/admin/customers', label: 'All customers' }}
     >
       <div className="grid gap-4 sm:grid-cols-3">
         <Stat label="Orders" value={String(c.orderCount)} />

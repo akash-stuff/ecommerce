@@ -37,6 +37,8 @@ export const TENANT_SCOPED_MODELS = new Set<string>([
   'Review',
   'Page',
   'Banner',
+  'PaymentGateway',
+  'EmailOtp',
 ]);
 
 /**

@@ -8,13 +8,20 @@ interface CustomerState {
   customer: CustomerProfile | null;
   status: 'idle' | 'loading' | 'authenticated' | 'guest';
   signIn: (email: string, password: string) => Promise<void>;
+  /**
+   * Starts a registration. Resolves to the challenge rather than signing in:
+   * the account is created by `verifyEmail`, so the caller has to show the code
+   * form next.
+   */
   register: (payload: {
     email: string;
     password: string;
     firstName: string;
     lastName?: string;
     phone?: string;
-  }) => Promise<void>;
+  }) => Promise<{ email: string; expiresInSeconds: number; resendInSeconds: number }>;
+  /** Confirms the emailed code, creating the account and signing in. */
+  verifyEmail: (email: string, code: string) => Promise<void>;
   signOut: () => Promise<void>;
   hydrate: () => Promise<void>;
 }
@@ -46,7 +53,23 @@ export const useCustomerStore = create<CustomerState>()((set) => ({
   register: async (payload) => {
     set({ status: 'loading' });
     try {
-      await customerService.register(payload);
+      const challenge = await customerService.register(payload);
+      // Back to 'guest', not 'authenticated': nothing has been created yet, and
+      // claiming otherwise would let the rest of the app act as if signed in.
+      set({ customer: null, status: 'guest' });
+      return challenge;
+    } catch (e) {
+      set({ customer: null, status: 'guest' });
+      throw e;
+    }
+  },
+
+  verifyEmail: async (email, code) => {
+    set({ status: 'loading' });
+    try {
+      await customerService.verifyEmail(email, code);
+      // Fold the guest cart in before the profile loads, so the header badge
+      // never briefly shows an empty cart the shopper just filled.
       await cartService.merge().catch(() => undefined);
       clearCustomerScopedQueries();
       set({ customer: await customerService.me(), status: 'authenticated' });

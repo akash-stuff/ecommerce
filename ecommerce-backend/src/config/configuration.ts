@@ -1,5 +1,8 @@
 import { MAX_UPLOAD_BYTES } from '../media/upload-limits';
 
+/** Whether the operator asked for the Gmail preset. */
+const isGmail = () => (process.env.SMTP_SERVICE ?? '').toLowerCase() === 'gmail';
+
 export default () => ({
   env: process.env.NODE_ENV ?? 'development',
   port: parseInt(process.env.PORT ?? '4000', 10),
@@ -36,6 +39,15 @@ export default () => ({
     ingressIp: process.env.PLATFORM_INGRESS_IP,
   },
 
+  credentials: {
+    /**
+     * Encrypts third-party credentials a tenant entrusts to us — today, their
+     * payment gateway secrets. Rotating it makes every stored secret
+     * unreadable, so it belongs in a secret manager, not in a repo.
+     */
+    encryptionKey: process.env.CREDENTIALS_ENCRYPTION_KEY,
+  },
+
   database: { url: process.env.DATABASE_URL },
   redis: { url: process.env.REDIS_URL ?? 'redis://localhost:6379' },
 
@@ -56,11 +68,31 @@ export default () => ({
   },
 
   smtp: {
-    host: process.env.SMTP_HOST,
-    port: parseInt(process.env.SMTP_PORT ?? '587', 10),
-    user: process.env.SMTP_USER,
-    password: process.env.SMTP_PASSWORD,
-    from: process.env.SMTP_FROM ?? 'no-reply@platform.com',
+    /**
+     * `SMTP_SERVICE=gmail` fills in the host and port, because those are the
+     * two values people most often get wrong — and getting them wrong produces
+     * a connection timeout rather than a message saying what is misconfigured.
+     * An explicit SMTP_HOST always wins.
+     */
+    host: process.env.SMTP_HOST || (isGmail() ? 'smtp.gmail.com' : undefined),
+    port: parseInt(process.env.SMTP_PORT ?? (isGmail() ? '465' : '587'), 10),
+    user: process.env.SMTP_USER?.trim(),
+    /**
+     * Whitespace stripped, not just trimmed.
+     *
+     * Google displays an App Password as four groups of four — `abcd efgh ijkl
+     * mnop` — and that is what gets pasted. The spaces are presentation only;
+     * sent literally they produce `535 Username and Password not accepted`,
+     * which reads as a wrong password rather than as a formatting problem.
+     */
+    password: process.env.SMTP_PASSWORD?.replace(/\s+/g, ''),
+    /**
+     * Gmail rewrites a From it has not verified to the authenticated account,
+     * so a mismatch here silently changes who a customer sees the receipt from.
+     * Defaulting to the account itself keeps the two in step; MailerService
+     * warns if they are deliberately different.
+     */
+    from: process.env.SMTP_FROM || process.env.SMTP_USER || 'no-reply@platform.com',
   },
 
   /**
@@ -79,11 +111,6 @@ export default () => ({
     defaultCountryCode: process.env.SMS_DEFAULT_COUNTRY_CODE,
   },
 
-  razorpay: {
-    keyId: process.env.RAZORPAY_KEY_ID,
-    keySecret: process.env.RAZORPAY_KEY_SECRET,
-    webhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
-  },
 
   storage: {
     bucket: process.env.S3_BUCKET,

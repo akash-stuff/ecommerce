@@ -11,6 +11,11 @@ export class StoreThemeDto {
   @ApiProperty() secondaryColor!: string;
   @ApiProperty() bodyFont!: string;
   @ApiProperty() headingFont!: string;
+  @ApiProperty({ description: "Header logo height: 'sm' | 'md' | 'lg'" })
+  logoSize!: string;
+  @ApiProperty({ description: 'Named background preset' }) background!: string;
+  @ApiProperty({ nullable: true }) backgroundImageUrl!: string | null;
+  @ApiProperty() backgroundFit!: string;
   @ApiProperty({ type: Object }) socialLinks!: Record<string, string>;
   @ApiProperty({ type: [String] }) homepageLayout!: string[];
 

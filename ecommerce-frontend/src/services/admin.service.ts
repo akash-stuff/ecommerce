@@ -84,6 +84,93 @@ export const shippingService = {
   removeMethod: (id: string) => apiClient.delete(`/shipping/methods/${id}`),
 };
 
+/**
+ * A template as the store owner sees it: the look, and which homepage sections
+ * it turns on. Distinct from the platform console's `PlatformTemplate` because
+ * a shopkeeper has no business seeing how many other stores use it.
+ */
+export interface StoreTemplate {
+  id: string;
+  name: string;
+  slug: string;
+  category: string;
+  description: string | null;
+  previewImage: string | null;
+  defaultTheme: {
+    primaryColor?: string;
+    secondaryColor?: string;
+    accentColor?: string;
+    bodyFont?: string;
+    headingFont?: string;
+  };
+  layoutConfig: { sections?: string[] };
+}
+
+export const themeService = {
+  templates: () => unwrap<StoreTemplate[]>(apiClient.get('/theme/templates')),
+
+  /**
+   * Adopts the template's colours, fonts and homepage sections. The logo,
+   * favicon and custom CSS survive unless explicitly cleared — the API decides
+   * that, not this call, so leaving the flags off is the safe default.
+   */
+  applyTemplate: (payload: {
+    templateId: string;
+    keepLogo?: boolean;
+    keepCustomCss?: boolean;
+  }) => unwrap<unknown>(apiClient.post('/theme/template', payload)),
+};
+
+/** One credential a gateway asks for, as the API describes it. */
+export interface GatewayCredentialField {
+  name: string;
+  label: string;
+  secret: boolean;
+  required: boolean;
+  hint?: string;
+}
+
+/**
+ * A store's connection to one payment provider.
+ *
+ * There is no field for a secret's value, on purpose: the API returns which
+ * secrets are set, never what they are. `secretsSet` is what lets the form show
+ * "saved" beside a field the shopkeeper does not need to retype.
+ */
+export interface PaymentGateway {
+  provider: string;
+  label: string | null;
+  isEnabled: boolean;
+  publicKey: string | null;
+  secretsSet: string[];
+  /** Enabled *and* complete — the only state checkout will offer. */
+  ready: boolean;
+  credentialFields: GatewayCredentialField[];
+  updatedAt: string | null;
+}
+
+export const paymentGatewayService = {
+  list: () => unwrap<PaymentGateway[]>(apiClient.get('/payments/gateways')),
+
+  /**
+   * Omit a secret to keep the stored value; send an empty string to clear it.
+   * The form relies on that distinction, because it never holds the real value
+   * to send back.
+   */
+  save: (
+    provider: string,
+    payload: {
+      isEnabled?: boolean;
+      publicKey?: string;
+      label?: string;
+      secrets?: Record<string, string>;
+    },
+  ) => unwrap<PaymentGateway[]>(apiClient.put(`/payments/gateways/${provider}`, payload)),
+
+  disconnect: (provider: string) =>
+    unwrap<PaymentGateway[]>(apiClient.delete(`/payments/gateways/${provider}`)),
+};
+
 export interface UploadedMedia {
   key: string;
   url: string;
@@ -91,17 +178,39 @@ export interface UploadedMedia {
   contentType: string;
 }
 
+/** What a store's own upload is filed under. */
+export type TenantUploadPurpose = 'product' | 'theme' | 'banner' | 'category';
+
+/**
+ * Platform-level uploads, which belong to no store. The API serves these on a
+ * separate route because the platform console has no tenant to file under.
+ */
+export type PlatformUploadPurpose = 'template';
+
+export type UploadPurpose = TenantUploadPurpose | PlatformUploadPurpose;
+
+const PLATFORM_PURPOSES: PlatformUploadPurpose[] = ['template'];
+
 export const mediaService = {
   /**
    * `Content-Type` is set to undefined deliberately: the browser has to write
    * it, because only it knows the multipart boundary. The axios instance
    * defaults to application/json, which would make the body unparseable.
+   *
+   * The route is chosen from the purpose rather than passed in, so a caller
+   * cannot pair a template thumbnail with the tenant endpoint — which would be
+   * a 404 from TenantGuard on the platform console, where there is no tenant.
    */
-  upload: (file: File, purpose: 'product' | 'theme' | 'banner' = 'product') => {
+  upload: (file: File, purpose: UploadPurpose = 'product') => {
     const form = new FormData();
     form.append('file', file);
+
+    const path = PLATFORM_PURPOSES.includes(purpose as PlatformUploadPurpose)
+      ? '/platform/media/upload'
+      : '/media/upload';
+
     return unwrap<UploadedMedia>(
-      apiClient.post('/media/upload', form, {
+      apiClient.post(path, form, {
         params: { purpose },
         headers: { 'Content-Type': undefined },
       }),

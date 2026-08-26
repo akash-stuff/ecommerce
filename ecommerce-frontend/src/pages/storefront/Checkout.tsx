@@ -5,6 +5,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
 import { cartService, checkoutService } from '@/services/cart.service';
+import { paymentService } from '@/services/store.service';
+import { payWithRazorpay, type RazorpayIntent } from '@/features/payments/razorpay';
 import { useCart } from '@/hooks/useCart';
 import { useStore } from '@/features/theme/ThemeProvider';
 import { OrderSummary } from '@/components/OrderSummary';
@@ -68,9 +70,34 @@ export default function Checkout() {
 
   const chosen = options.data?.find((o) => o.methodId === methodId) ?? null;
 
+  /**
+   * Which methods this store has connected. Asked rather than assumed: whether
+   * a gateway works depends on credentials the browser is never given, so the
+   * server is the only thing that can answer.
+   */
+  const providers = useQuery({
+    queryKey: ['payment-providers'],
+    queryFn: paymentService.providers,
+  });
+
+  const codOffered = (providers.data ?? []).includes('COD');
+  const onlineOffered = (providers.data ?? []).some((p) => p !== 'COD');
+
+  // COD is unavailable either because the store does not accept it or because
+  // this shipping method cannot carry it. Both end the same way.
+  const codUsable = codOffered && chosen?.codAvailable !== false;
+
+  /**
+   * Keep the selection on something the store can actually take.
+   *
+   * Runs on every change to what is offered rather than once, because the
+   * shipping method can withdraw COD after it was selected, and the provider
+   * list arrives after the first render.
+   */
   useEffect(() => {
-    if (chosen && !chosen.codAvailable) setIsCod(false);
-  }, [chosen]);
+    if (isCod && !codUsable && onlineOffered) setIsCod(false);
+    if (!isCod && !onlineOffered && codUsable) setIsCod(true);
+  }, [isCod, codUsable, onlineOffered]);
 
   /**
    * Re-prices the cart on the server whenever the shipping choice changes, so
@@ -84,6 +111,15 @@ export default function Checkout() {
 
   const cart = priced.data ?? baseCart;
 
+  /**
+   * Places the order, then — for an online payment — carries straight on into
+   * the gateway.
+   *
+   * Order first, payment second, deliberately. The order is what holds the
+   * prices, the stock and the address, so a dismissed or failed payment leaves
+   * something to retry against instead of a lost cart. `paymentStatus` stays
+   * PENDING until the gateway says otherwise.
+   */
   const place = useMutation({
     mutationFn: (values: FormValues) =>
       checkoutService.place({
@@ -103,7 +139,59 @@ export default function Checkout() {
         paymentMethod: isCod ? 'COD' : 'ONLINE',
         notes: values.notes || undefined,
       }),
-    onSuccess: (order) => navigate(`/order/${order.orderNumber}`, { state: { order } }),
+    onSuccess: async (order) => {
+      // Cash needs nothing further — the shopkeeper marks it collected.
+      if (isCod) {
+        navigate(`/order/${order.orderNumber}`, { state: { order } });
+        return;
+      }
+
+      try {
+        const intent = (await paymentService.initiate(
+          order.orderNumber,
+          'RAZORPAY',
+        )) as unknown as RazorpayIntent;
+
+        const outcome = await payWithRazorpay({
+          intent: { ...intent, orderNumber: order.orderNumber },
+          storeName: store.name,
+          brandColor: store.theme?.primaryColor,
+          customer: {
+            name: form.getValues('fullName'),
+            email: form.getValues('email'),
+            phone: form.getValues('phone'),
+          },
+        });
+
+        if (outcome.status === 'paid') {
+          /**
+           * Told to the API so the confirmation page can say "paid" now. The
+           * webhook is still the authority and will arrive independently; both
+           * paths apply the same idempotent outcome, so whichever lands first
+           * is fine.
+           *
+           * A failure here is not shown as a payment failure, because the money
+           * has moved — the order page will catch up when the webhook lands.
+           */
+          await paymentService
+            .confirm(order.orderNumber, 'RAZORPAY', outcome.result)
+            .catch(() => undefined);
+        } else if (outcome.status === 'failed') {
+          setPlaceError(`${outcome.reason} Your order is saved — you can pay again from it.`);
+        }
+        // A dismissal says nothing and needs no message: the order page shows
+        // it as awaiting payment, which is exactly what happened.
+      } catch (e) {
+        setPlaceError(
+          (e as { message?: string }).message ??
+            'The order was placed but the payment window could not open. You can pay from the order.',
+        );
+      }
+
+      // Reached whatever happened. The order exists either way, and its own page
+      // is the honest place to see where the payment got to.
+      navigate(`/order/${order.orderNumber}`, { state: { order } });
+    },
     onError: (e) =>
       setPlaceError((e as { message?: string }).message ?? 'Could not place the order.'),
   });
@@ -225,28 +313,45 @@ export default function Checkout() {
 
           <Section title="Payment">
             <div className="space-y-3 sm:col-span-2">
-              <PaymentRow
-                label="Cash on delivery"
-                hint={
-                  chosen?.codAvailable === false
-                    ? 'Not available for the selected delivery method'
-                    : chosen && Number(chosen.codFee) > 0
-                      ? `Includes a ${formatMoney(chosen.codFee, store.currency)} handling fee`
-                      : 'Pay when it arrives'
-                }
-                selected={isCod}
-                disabled={chosen?.codAvailable === false}
-                onSelect={() => setIsCod(true)}
-              />
-              {/* Card and UPI appear here once a gateway is configured; offering
-                  them without one would be a button that cannot work. */}
-              <PaymentRow
-                label="Pay online"
-                hint="Not configured for this store yet"
-                selected={!isCod}
-                disabled
-                onSelect={() => setIsCod(false)}
-              />
+              {providers.isLoading && (
+                <p className="text-sm text-ink-500">Checking payment methods…</p>
+              )}
+
+              {/* A method the store has not connected is not shown at all,
+                  rather than shown disabled. A greyed-out row invites the
+                  shopper to wonder what they did wrong; its absence just reads
+                  as "this shop takes cash". */}
+              {codOffered && (
+                <PaymentRow
+                  label="Cash on delivery"
+                  hint={
+                    chosen?.codAvailable === false
+                      ? 'Not available for the selected delivery method'
+                      : chosen && Number(chosen.codFee) > 0
+                        ? `Includes a ${formatMoney(chosen.codFee, store.currency)} handling fee`
+                        : 'Pay when it arrives'
+                  }
+                  selected={isCod}
+                  disabled={chosen?.codAvailable === false}
+                  onSelect={() => setIsCod(true)}
+                />
+              )}
+
+              {onlineOffered && (
+                <PaymentRow
+                  label="Pay online"
+                  hint="Card, UPI, netbanking or wallet"
+                  selected={!isCod}
+                  onSelect={() => setIsCod(false)}
+                />
+              )}
+
+              {providers.isSuccess && !codOffered && !onlineOffered && (
+                <p className="rounded-card border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  This store has not finished setting up payments, so an order cannot be placed
+                  yet. Please try again shortly.
+                </p>
+              )}
             </div>
           </Section>
 
@@ -267,12 +372,24 @@ export default function Checkout() {
             >
               <button
                 type="submit"
-                disabled={place.isPending || (destinationReady && options.data?.length === 0)}
+                // Also blocked when the store has no usable payment method: the
+                // API would refuse the order, and finding that out after filling
+                // in an address is the worst place to learn it.
+                disabled={
+                  place.isPending ||
+                  (destinationReady && options.data?.length === 0) ||
+                  (providers.isSuccess && !codUsable && !onlineOffered)
+                }
                 className="w-full rounded-card bg-brand py-3 text-sm font-medium text-white disabled:opacity-40"
               >
                 {place.isPending
-                  ? 'Placing order…'
-                  : `Place order · ${formatMoney(cart.totals.grandTotal, store.currency)}`}
+                  ? isCod
+                    ? 'Placing order…'
+                    : 'Opening payment…'
+                  : `${isCod ? 'Place order' : 'Pay'} · ${formatMoney(
+                      cart.totals.grandTotal,
+                      store.currency,
+                    )}`}
               </button>
 
               {placeError && <p className="mt-3 text-sm text-red-600">{placeError}</p>}

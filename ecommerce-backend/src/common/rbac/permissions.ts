@@ -39,6 +39,14 @@ export const PERMISSIONS = {
   PAGES_WRITE: 'pages.write',
 
   /**
+   * Connecting the store's own payment gateway. Separate from SETTINGS_UPDATE
+   * because this one hands over credentials that move money into a bank
+   * account — the narrowest possible grant is the right default, and STAFF must
+   * never inherit it.
+   */
+  PAYMENTS_MANAGE: 'payments.manage',
+
+  /**
    * One permission for all uploads rather than one per feature. Product images,
    * logos and banners all end up in the same bucket under the same tenant
    * prefix, so splitting the grant would suggest an isolation that does not
@@ -79,7 +87,12 @@ export const ROLE_PERMISSIONS: Record<SystemRole, Permission[]> = {
   SUPER_ADMIN: [...ALL_PLATFORM_PERMISSIONS, ...ALL_TENANT_PERMISSIONS],
   TENANT_OWNER: ALL_TENANT_PERMISSIONS,
   TENANT_ADMIN: ALL_TENANT_PERMISSIONS.filter(
-    (p) => p !== PERMISSIONS.STAFF_MANAGE && p !== PERMISSIONS.ORDERS_REFUND,
+    (p) =>
+      p !== PERMISSIONS.STAFF_MANAGE &&
+      p !== PERMISSIONS.ORDERS_REFUND &&
+      // Gateway credentials decide which bank account the money reaches, which
+      // is the owner's decision rather than an administrator's.
+      p !== PERMISSIONS.PAYMENTS_MANAGE,
   ),
   STAFF: [
     PERMISSIONS.PRODUCTS_READ,

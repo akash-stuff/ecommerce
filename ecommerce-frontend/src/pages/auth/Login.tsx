@@ -25,12 +25,21 @@ export default function Login() {
     try {
       await login(values.email, values.password);
 
-      // A super admin manages the platform, not a single store, so they land in
-      // the platform console. Anyone sent here by a guard goes back where they
-      // were trying to go.
+      /**
+       * A super admin manages the platform, not a single store, so they land in
+       * the platform console. Anyone sent here by a guard goes back where they
+       * were trying to go — but only if their role can actually be there.
+       *
+       * The check matters: a guard sends an unauthenticated visitor here with
+       * the path they wanted, and honouring it blindly means signing in
+       * successfully and being bounced straight back out by the same guard.
+       * Login then looks like it ignored you.
+       */
+      const role = useAuthStore.getState().user?.role;
+      const home = role === 'SUPER_ADMIN' ? '/platform' : '/admin';
       const requested = (location.state as { from?: string })?.from;
-      const isPlatformAdmin = useAuthStore.getState().user?.role === 'SUPER_ADMIN';
-      navigate(requested ?? (isPlatformAdmin ? '/platform' : '/admin'), { replace: true });
+
+      navigate(requested?.startsWith(home) ? requested : home, { replace: true });
     } catch (e) {
       setFormError((e as { message?: string }).message ?? 'Could not sign in.');
     }

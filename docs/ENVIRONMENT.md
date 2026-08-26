@@ -19,9 +19,11 @@ into the JavaScript bundle and is public — never put a key there.
 | `JWT_REFRESH_TTL_DAYS` | no | Default `30` |
 | `CORS_ORIGINS` | no | Comma-separated exact origins |
 | `CORS_ALLOW_TENANT_SUBDOMAINS` | no | Default `true`; allows `*.PLATFORM_DOMAIN` |
-| `SMTP_*` | for email | Host, port, user, password, from |
-| `RAZORPAY_KEY_ID` / `KEY_SECRET` | for payments | |
-| `RAZORPAY_WEBHOOK_SECRET` | for payments | Webhook signatures are verified with this |
+| `CREDENTIALS_ENCRYPTION_KEY` | yes | 32 bytes, base64 or hex. `openssl rand -base64 32`. Encrypts the payment credentials tenants enter — see below |
+| `SMTP_SERVICE` | no | `gmail` fills in host and port. An explicit `SMTP_HOST` always wins |
+| `SMTP_HOST` / `SMTP_PORT` | for email | Blank host means email is logged, not sent |
+| `SMTP_USER` / `SMTP_PASSWORD` | for email | For Gmail: the full address, and a 16-character **App Password** — not the account password |
+| `SMTP_FROM` | no | Defaults to `SMTP_USER`. Gmail rewrites an unverified From, so a different value is silently ignored |
 | `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | for SMS/WhatsApp | Leave blank and only email is sent |
 | `TWILIO_SMS_FROM` | for SMS | E.164 sender. SMS is unconfigured without it, even with credentials |
 | `TWILIO_WHATSAPP_FROM` | for WhatsApp | Preferred over SMS when both are set |
@@ -29,7 +31,7 @@ into the JavaScript bundle and is public — never put a key there.
 | `S3_BUCKET` / `S3_REGION` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | for object storage | All four, or S3 is treated as unconfigured |
 | `AWS_SESSION_TOKEN` | no | Only for temporary credentials from an assumed role |
 | `S3_ENDPOINT` | no | Set for MinIO / R2 / Spaces; blank means AWS |
-| `STORAGE_PUBLIC_BASE_URL` | recommended | Where stored files are fetched from. Defaults to `http://localhost:PORT` |
+| `STORAGE_PUBLIC_BASE_URL` | recommended | Where stored files are fetched from. Defaults to `http://localhost:PORT`. **Leave blank with S3** unless a CDN sits in front — see below |
 | `STORAGE_LOCAL_DIR` | no | Default `./uploads`, used only when S3 is unconfigured |
 | `MAX_UPLOAD_BYTES` | no | Default `5242880` (5MB) |
 
@@ -45,6 +47,53 @@ keys, same URLs — which is what makes the switch a configuration change. It is
 still wrong for more than one replica: files land on one container's filesystem,
 so a second replica cannot serve them and an ephemeral container loses them on
 restart. Configure S3 in production.
+
+### The one storage mistake with no error
+
+`STORAGE_PUBLIC_BASE_URL` is what a stored URL is built from. Left at its
+`.env.example` value — this API's own address — while S3 is configured, every
+upload *succeeds* and every URL it returns 404s, with the wrong address written
+into the database permanently. Re-uploading later does not repair rows already
+saved.
+
+Leave it blank with S3 and the bucket URL is used directly; set it to your CDN
+hostname if one is in front. The API logs an ERROR at boot if S3 is configured
+and this still points at localhost, and a WARN if S3 is *partially* configured
+so uploads are quietly going to local disk instead.
+
+## Payments: nothing to configure here
+
+There are no platform-wide gateway keys. Each store connects its own account
+from Admin → Payments, because on a white-label platform the settlement has to
+reach the store's bank rather than the operator's. Both Razorpay and cash on
+delivery are opt-in per store, so a shop can take cash only, cards only, or
+both.
+
+What the platform provides is `CREDENTIALS_ENCRYPTION_KEY`, which those stored
+secrets are sealed with. Read the rotation note in
+[`SECURITY.md`](SECURITY.md#credentials_encryption_key) before changing it:
+rotating it makes every store's gateway credentials unreadable and every store
+has to reconnect.
+
+## Email via Gmail
+
+```
+SMTP_SERVICE=gmail
+SMTP_USER=shop@yourdomain.com
+SMTP_PASSWORD=<16-character App Password>
+```
+
+The App Password needs 2-Step Verification enabled on the account, then
+<https://myaccount.google.com/apppasswords>. The account password will not work
+— Google blocks it for SMTP.
+
+Leave `SMTP_FROM` blank so it matches `SMTP_USER`: Gmail rewrites a From address
+the account is not authorised to send as, so a different value is silently
+replaced rather than rejected. The API warns at boot if the two disagree.
+
+Gmail's free tier allows roughly 500 messages a day and Workspace 2,000. Above
+that, use a transactional provider — the mailer is plain SMTP, so it is a
+credential change, not a code change.
 
 Boot fails with a readable message if a required variable is missing or a
 secret is too short — checked by `src/config/env.validation.ts`. That is

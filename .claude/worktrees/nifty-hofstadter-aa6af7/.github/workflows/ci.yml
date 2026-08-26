@@ -1,0 +1,146 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+# A new push supersedes an in-flight run on the same branch.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+
+    # The tenant-isolation suite is this repository's primary guarantee and it
+    # needs a real database — it asserts what Postgres actually returns, not
+    # what a mock was told to return.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: ecommerce_test
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ['6379:6379']
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      NODE_ENV: test
+      PORT: 4000
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/ecommerce_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-access-secret-not-used-outside-ci
+      JWT_REFRESH_SECRET: ci-refresh-secret-not-used-outside-ci
+      PLATFORM_DOMAIN: platform.test
+      # `localhost` must resolve to no tenant: the platform-console tests sign in
+      # there and expect the JWT, not the hostname, to decide the tenant.
+      PLATFORM_ADMIN_HOSTS: localhost,admin.platform.test
+
+    defaults:
+      run:
+        working-directory: ecommerce-backend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ecommerce-backend/package-lock.json
+
+      - run: npm ci
+
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      - name: Typecheck
+        run: npx tsc --noEmit -p tsconfig.json
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Tenant isolation and integration tests
+        run: npm run test:e2e
+
+      - name: Build
+        run: npx nest build
+
+      # Production dependencies only.
+      #
+      # Gated at `critical` rather than `high`, deliberately and temporarily.
+      # There are 5 open high advisories, all transitive under NestJS
+      # (@nestjs/platform-express, multer, js-yaml, lodash), and their only fix
+      # is a semver-major jump to Nest v11 — a framework migration, not a patch.
+      # Gating at `high` would make this pipeline red on its first run, and a
+      # permanently red gate is one somebody switches off.
+      #
+      # Raise this to `high` as part of the Nest v11 migration. Until then a new
+      # critical still fails the build, and the full report below stays visible.
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=critical
+
+      # Everything else, including dev dependencies, reported but not blocking.
+      - name: Full advisory report
+        if: always()
+        run: npm audit || true
+
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: ecommerce-frontend
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ecommerce-frontend/package-lock.json
+
+      - run: npm ci
+
+      - name: Typecheck
+        run: npx tsc -b --noEmit
+
+      - name: Tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Full advisory report
+        if: always()
+        run: npm audit || true
+
+# Note: neither app runs `npm run lint`. Both declare the script, but eslint is
+# in neither app's devDependencies and neither has a config file, so wiring it
+# here would fail on the first run — and a red pipeline nobody can fix gets the
+# audit gate switched off with it. Install and configure eslint first, then add
+# the step.

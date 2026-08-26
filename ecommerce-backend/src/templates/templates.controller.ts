@@ -7,6 +7,7 @@ import { PlatformOnly, RequirePermissions, TenantOptional } from '../common/deco
 import { PERMISSIONS } from '../common/rbac/permissions';
 import { CreateTemplateDto, UpdateTemplateDto } from './dto/template.dto';
 import { ALLOWED_FONTS, HOMEPAGE_SECTIONS } from '../theme/dto/theme.dto';
+import { BACKGROUND_PRESETS, LOGO_SIZES } from '../theme/backgrounds';
 
 @ApiTags('Templates')
 @ApiBearerAuth()
@@ -48,7 +49,12 @@ export class TemplatesController {
   @RequirePermissions(PERMISSIONS.PLATFORM_TEMPLATES_MANAGE)
   @ApiOperation({ summary: 'Fonts and homepage sections a template may specify' })
   options() {
-    return { fonts: ALLOWED_FONTS, sections: HOMEPAGE_SECTIONS };
+    return {
+      fonts: ALLOWED_FONTS,
+      sections: HOMEPAGE_SECTIONS,
+      backgrounds: BACKGROUND_PRESETS,
+      logoSizes: LOGO_SIZES,
+    };
   }
 
   @Post()

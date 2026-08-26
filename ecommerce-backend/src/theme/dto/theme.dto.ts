@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
   IsBoolean,
@@ -8,10 +8,16 @@ import {
   IsOptional,
   IsString,
   IsUrl,
+  IsUUID,
   Length,
   MaxLength,
 } from 'class-validator';
 import { MAX_CUSTOM_CSS_LENGTH } from '../css-sanitiser';
+import {
+  BACKGROUND_FITS,
+  BACKGROUND_PRESETS,
+  LOGO_SIZES,
+} from '../backgrounds';
 
 /**
  * Fonts are an allowlist rather than free text: the storefront loads them from
@@ -56,6 +62,22 @@ export class UpdateThemeDto {
 
   @ApiPropertyOptional() @IsOptional() @IsUrl({ require_tld: false }) faviconUrl?: string;
 
+  @ApiPropertyOptional({ enum: LOGO_SIZES, description: 'Header logo height' })
+  @IsOptional() @IsIn(LOGO_SIZES as unknown as string[]) logoSize?: string;
+
+  /**
+   * A name, never CSS. The storefront decides what each preset looks like, and
+   * draws it from this store's own colours — see theme/backgrounds.ts.
+   */
+  @ApiPropertyOptional({ enum: BACKGROUND_PRESETS })
+  @IsOptional() @IsIn(BACKGROUND_PRESETS as unknown as string[]) background?: string;
+
+  @ApiPropertyOptional({ description: 'Overrides the preset. Empty to remove.' })
+  @IsOptional() @IsUrl({ require_tld: false }) backgroundImageUrl?: string;
+
+  @ApiPropertyOptional({ enum: BACKGROUND_FITS })
+  @IsOptional() @IsIn(BACKGROUND_FITS as unknown as string[]) backgroundFit?: string;
+
   @ApiPropertyOptional({ description: 'Platform name to profile URL' })
   @IsOptional() @IsObject() socialLinks?: Record<string, string>;
 
@@ -74,4 +96,29 @@ export class UpdateStorefrontDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) metaTitle?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) metaDescription?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isPublished?: boolean;
+}
+
+/**
+ * Applying a template to a store that already exists.
+ *
+ * `keepLogo` defaults to true and is the whole reason this is not a plain
+ * theme update: a shopkeeper trying on a different look almost never means
+ * "also throw away the logo I uploaded", and losing it is the kind of mistake
+ * that is only noticed once a customer sees the storefront.
+ */
+export class ApplyTemplateDto {
+  @ApiProperty({ description: 'Id of an active template' })
+  @IsUUID() templateId!: string;
+
+  @ApiPropertyOptional({
+    default: true,
+    description: 'Keep the logo and favicon already uploaded',
+  })
+  @IsOptional() @IsBoolean() keepLogo?: boolean;
+
+  @ApiPropertyOptional({
+    default: true,
+    description: "Keep the store's own custom CSS",
+  })
+  @IsOptional() @IsBoolean() keepCustomCss?: boolean;
 }

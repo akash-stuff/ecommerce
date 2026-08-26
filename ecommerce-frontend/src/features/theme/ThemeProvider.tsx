@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { storeService } from '@/services/store.service';
 import type { StoreConfig } from '@/types/api';
+import { surfaceFor, surfaceForImage } from './backgrounds';
 
 const StoreContext = createContext<StoreConfig | null>(null);
 
@@ -44,6 +45,37 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
     loadFonts([theme.bodyFont, theme.headingFont]);
     applyCustomCss(theme.customCss);
+
+    /**
+     * The page background, painted on <body> rather than a wrapper div.
+     *
+     * A wrapper is only as tall as its content, so a short page — an empty cart,
+     * a 404 — would show white below the fold with the background stopping
+     * halfway. `background-attachment: fixed` also behaves as intended only on
+     * a full-height painting area.
+     *
+     * An uploaded image wins over a preset: a store that went to the trouble of
+     * choosing its own artwork did not mean "and also the aurora".
+     */
+    const surface = theme.backgroundImageUrl
+      ? surfaceForImage(theme.backgroundImageUrl, theme.backgroundFit)
+      : surfaceFor(theme.background, theme.primaryColor, theme.secondaryColor);
+
+    Object.assign(document.body.style, surface.style);
+    // A class, not inline colours: components need to know the surface is dark
+    // so borders and muted text can invert together rather than one at a time.
+    root.classList.toggle('surface-dark', surface.dark);
+
+    return () => {
+      // Undone on unmount so a hot reload, or the admin console mounted in the
+      // same tab, does not inherit a storefront's background.
+      for (const key of Object.keys(surface.style)) {
+        document.body.style.removeProperty(
+          key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`),
+        );
+      }
+      root.classList.remove('surface-dark');
+    };
   }, [data]);
 
   if (isLoading) {

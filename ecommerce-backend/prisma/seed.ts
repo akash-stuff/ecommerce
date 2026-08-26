@@ -8,6 +8,7 @@
  */
 import { PrismaClient, ProductStatus, SystemRole, TenantStatus } from '@prisma/client';
 import * as argon2 from 'argon2';
+import { templateLook } from '../src/theme/template-look';
 
 const prisma = new PrismaClient();
 const PLATFORM_DOMAIN = process.env.PLATFORM_DOMAIN ?? 'platform.localhost';
@@ -44,35 +45,125 @@ async function main(): Promise<void> {
   ]);
 
   // --- Templates -------------------------------------------------------------
+  /**
+   * The catalogue a new store picks from, and that an existing store can switch
+   * to from Appearance.
+   *
+   * `sections` differs per template on purpose. A template whose only variation
+   * is three hex codes is a colour scheme, not a template - a grocery store
+   * wants categories above the fold and no editorial hero, while a jeweller
+   * wants the opposite. `description` is shown in both pickers, so it says what
+   * the layout does rather than restating the name.
+   */
+  /**
+   * `background` and `logoSize` are part of a template's look, not an
+   * afterthought: a jeweller on Midnight and a grocer on Wash are recognisably
+   * different shops before a single product is added. A store provisioned from
+   * a template inherits both, so nobody has to open Appearance to stop their
+   * storefront looking like a blank page.
+   */
   const templateSpecs = [
-    { name: 'Fashion', slug: 'fashion', category: 'apparel',
-      theme: { primaryColor: '#141414', secondaryColor: '#8A8A8A', headingFont: 'Playfair Display', bodyFont: 'Inter' } },
-    { name: 'Electronics', slug: 'electronics', category: 'electronics',
-      theme: { primaryColor: '#0B4F9E', secondaryColor: '#0EA5E9', headingFont: 'Inter', bodyFont: 'Inter' } },
-    { name: 'Grocery', slug: 'grocery', category: 'grocery',
-      theme: { primaryColor: '#1F7A3D', secondaryColor: '#84CC16', headingFont: 'Inter', bodyFont: 'Inter' } },
-    { name: 'Furniture', slug: 'furniture', category: 'home',
-      theme: { primaryColor: '#6B4423', secondaryColor: '#C9A227', headingFont: 'Fraunces', bodyFont: 'Inter' } },
-    { name: 'Cosmetics', slug: 'cosmetics', category: 'beauty',
-      theme: { primaryColor: '#B4327A', secondaryColor: '#F4C2D7', headingFont: 'Cormorant', bodyFont: 'Inter' } },
-    { name: 'Jewellery', slug: 'jewellery', category: 'luxury',
-      theme: { primaryColor: '#8B7355', secondaryColor: '#D4AF37', headingFont: 'Cormorant', bodyFont: 'Inter' } },
-    { name: 'Bakery', slug: 'bakery', category: 'food',
-      theme: { primaryColor: '#8C4A1E', secondaryColor: '#E8B84B', headingFont: 'Fraunces', bodyFont: 'Inter' } },
-    { name: 'General Store', slug: 'general-store', category: 'general',
-      theme: { primaryColor: '#111827', secondaryColor: '#6B7280', headingFont: 'Inter', bodyFont: 'Inter' } },
+    {
+      name: 'Fashion', slug: 'fashion', category: 'apparel',
+      description: 'Editorial hero, large imagery and a serif display face. For lookbook-led catalogues.',
+      theme: { primaryColor: '#141414', secondaryColor: '#8A8A8A', accentColor: '#141414', headingFont: 'Playfair Display', bodyFont: 'Inter', background: 'paper', logoSize: 'lg' },
+      sections: ['hero', 'featured', 'newArrivals', 'categories', 'newsletter'],
+    },
+    {
+      name: 'Electronics', slug: 'electronics', category: 'electronics',
+      description: 'Specification-first layout with a dense product grid. Categories lead, so shoppers can filter fast.',
+      theme: { primaryColor: '#0B4F9E', secondaryColor: '#0EA5E9', accentColor: '#0B4F9E', headingFont: 'Inter', bodyFont: 'Inter', background: 'dots', logoSize: 'md' },
+      sections: ['hero', 'categories', 'featured', 'newArrivals'],
+    },
+    {
+      name: 'Grocery', slug: 'grocery', category: 'grocery',
+      description: 'Categories above the fold and no editorial hero. Built for repeat baskets, not browsing.',
+      theme: { primaryColor: '#1F7A3D', secondaryColor: '#84CC16', accentColor: '#1F7A3D', headingFont: 'Inter', bodyFont: 'Inter', background: 'wash', logoSize: 'md' },
+      sections: ['categories', 'featured', 'newArrivals'],
+    },
+    {
+      name: 'Furniture', slug: 'furniture', category: 'home',
+      description: 'Room-scale photography with generous spacing. Slow, considered browsing.',
+      theme: { primaryColor: '#6B4423', secondaryColor: '#C9A227', accentColor: '#8C5A2B', headingFont: 'Fraunces', bodyFont: 'Inter', background: 'paper', logoSize: 'lg' },
+      sections: ['hero', 'categories', 'featured', 'newsletter'],
+    },
+    {
+      name: 'Cosmetics', slug: 'cosmetics', category: 'beauty',
+      description: 'Soft palette, new arrivals first. For ranges that turn over quickly.',
+      theme: { primaryColor: '#B4327A', secondaryColor: '#F4C2D7', accentColor: '#B4327A', headingFont: 'Cormorant', bodyFont: 'Inter', background: 'aurora', logoSize: 'md' },
+      sections: ['hero', 'newArrivals', 'featured', 'categories', 'newsletter'],
+    },
+    {
+      name: 'Jewellery', slug: 'jewellery', category: 'luxury',
+      description: 'Quiet, dark-neutral layout with one hero piece. Few products, shown large.',
+      theme: { primaryColor: '#8B7355', secondaryColor: '#D4AF37', accentColor: '#A8894F', headingFont: 'Cormorant', bodyFont: 'Inter', background: 'midnight', logoSize: 'lg' },
+      sections: ['hero', 'featured', 'newsletter'],
+    },
+    {
+      name: 'Bakery', slug: 'bakery', category: 'food',
+      description: 'Warm and short. One hero, a selection for today, and a mailing list.',
+      theme: { primaryColor: '#8C4A1E', secondaryColor: '#E8B84B', accentColor: '#8C4A1E', headingFont: 'Fraunces', bodyFont: 'Inter', background: 'paper', logoSize: 'md' },
+      sections: ['hero', 'featured', 'newsletter'],
+    },
+    {
+      name: 'Sports', slug: 'sports', category: 'sports',
+      description: 'High-contrast, motion-led hero with categories by discipline.',
+      theme: { primaryColor: '#0F172A', secondaryColor: '#F97316', accentColor: '#F97316', headingFont: 'Space Grotesk', bodyFont: 'DM Sans', background: 'lines', logoSize: 'md' },
+      sections: ['hero', 'categories', 'newArrivals', 'featured'],
+    },
+    {
+      name: 'Books', slug: 'books', category: 'media',
+      description: 'Text-forward and calm, organised by section rather than by image.',
+      theme: { primaryColor: '#3B2F2F', secondaryColor: '#8A7A6D', accentColor: '#7C4A2D', headingFont: 'Lora', bodyFont: 'Work Sans', background: 'paper', logoSize: 'md' },
+      sections: ['categories', 'newArrivals', 'featured', 'newsletter'],
+    },
+    {
+      name: 'Pharmacy', slug: 'pharmacy', category: 'health',
+      description: 'Clinical and plain. Categories first, no promotional hero.',
+      theme: { primaryColor: '#0E7490', secondaryColor: '#67E8F9', accentColor: '#0E7490', headingFont: 'Inter', bodyFont: 'Inter', background: 'plain', logoSize: 'md' },
+      sections: ['categories', 'featured'],
+    },
+    {
+      name: 'Handmade', slug: 'handmade', category: 'craft',
+      description: 'Maker-led, with new arrivals leading and a story-length hero.',
+      theme: { primaryColor: '#7C5C3E', secondaryColor: '#C4A484', accentColor: '#9C6644', headingFont: 'Fraunces', bodyFont: 'Work Sans', background: 'paper', logoSize: 'md' },
+      sections: ['hero', 'newArrivals', 'categories', 'featured', 'newsletter'],
+    },
+    {
+      name: 'Toys', slug: 'toys', category: 'kids',
+      description: 'Bright and playful, with categories grouped by age.',
+      theme: { primaryColor: '#DB2777', secondaryColor: '#FBBF24', accentColor: '#2563EB', headingFont: 'Poppins', bodyFont: 'Poppins', background: 'aurora', logoSize: 'lg' },
+      sections: ['hero', 'categories', 'featured', 'newArrivals'],
+    },
+    {
+      name: 'Minimal', slug: 'minimal', category: 'general',
+      description: 'Almost nothing: one grid of products, no hero, no newsletter. A blank slate.',
+      theme: { primaryColor: '#111827', secondaryColor: '#6B7280', accentColor: '#111827', headingFont: 'Inter', bodyFont: 'Inter', background: 'plain', logoSize: 'sm' },
+      sections: ['featured'],
+    },
+    {
+      name: 'General Store', slug: 'general-store', category: 'general',
+      description: 'Every section switched on. The default for a store that has not decided yet.',
+      theme: { primaryColor: '#111827', secondaryColor: '#6B7280', accentColor: '#111827', headingFont: 'Inter', bodyFont: 'Inter', background: 'wash', logoSize: 'md' },
+      sections: ['hero', 'featured', 'categories', 'newArrivals', 'newsletter'],
+    },
   ];
 
   for (const t of templateSpecs) {
+    // `update` carries the copy and the layout too, so re-running the seed
+    // brings an existing database up to date instead of only touching new rows.
+    const values = {
+      name: t.name,
+      category: t.category,
+      description: t.description,
+      defaultTheme: t.theme,
+      layoutConfig: { sections: t.sections },
+    };
+
     await prisma.template.upsert({
       where: { slug: t.slug },
-      update: { defaultTheme: t.theme },
-      create: {
-        name: t.name, slug: t.slug, category: t.category,
-        description: `${t.name} storefront layout`,
-        defaultTheme: t.theme,
-        layoutConfig: { sections: ['hero', 'featured', 'categories', 'newArrivals', 'newsletter'] },
-      },
+      update: values,
+      create: { slug: t.slug, ...values },
     });
   }
 
@@ -131,6 +222,7 @@ Seed complete.
   Voltway       owner@voltway.localhost   / OwnerPass123!   http://voltway.${PLATFORM_DOMAIN}:5173
   Demo customer shopper@example.com       / Shopper123!     (exists separately in each store)
   Demo coupon   WELCOME10                 10% off over 1000, capped at 700
+  Payments      Cash on delivery enabled  connect a gateway in Admin > Payments
   Demo banner   Announcement strip        text only; add a hero image from Admin > Banners
 `);
 }
@@ -180,12 +272,35 @@ async function seedTenant(spec: TenantSpec): Promise<void> {
       },
     });
 
+    // Same reader the API provisions through, so a seeded store and one created
+    // from the console cannot end up with different interpretations of the same
+    // template row.
     await tx.theme.create({
       data: {
         tenantId: tenant.id,
         storeId: store.id,
-        ...(template.defaultTheme as Record<string, unknown>),
-        homepageLayout: (template.layoutConfig as any)?.sections ?? [],
+        ...templateLook(template.defaultTheme, template.layoutConfig),
+      },
+    });
+
+    /**
+     * Cash on delivery, switched on.
+     *
+     * Payment methods are per store and off by default, so without this a
+     * seeded store would have a checkout that cannot complete — which reads as
+     * a broken build rather than as an unconfigured shop. COD is the one method
+     * that needs no credentials, so it is the honest default for demo data.
+     *
+     * Razorpay is deliberately *not* seeded: it would need a real merchant
+     * account, and a fake one that fails at the gateway is worse than an
+     * obvious "connect this" in the admin.
+     */
+    await tx.paymentGateway.create({
+      data: {
+        tenantId: tenant.id,
+        provider: 'COD',
+        isEnabled: true,
+        label: 'Cash collected on delivery',
       },
     });
 

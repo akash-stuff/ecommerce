@@ -14,8 +14,8 @@ import type { StorageProvider, StoredObject } from '../storage-provider';
  * Objects are uploaded without an ACL. Buckets increasingly have ACLs disabled
  * ("bucket owner enforced"), where sending `x-amz-acl: public-read` is a hard
  * failure rather than a no-op, so public read is left to the bucket policy or
- * the CDN in front of it. `S3_PUBLIC_BASE_URL` is what a stored URL is built
- * from, which is also how a CDN hostname gets in front of the origin.
+ * the CDN in front of it. `STORAGE_PUBLIC_BASE_URL` is what a stored URL is
+ * built from, which is also how a CDN hostname gets in front of the origin.
  */
 @Injectable()
 export class S3StorageProvider implements StorageProvider {

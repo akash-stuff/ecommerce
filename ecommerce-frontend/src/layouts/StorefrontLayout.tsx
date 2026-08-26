@@ -1,8 +1,9 @@
-import { useState } from 'react';
-import { Link, Outlet, useNavigate } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ShoppingBag, Search, User, X } from 'lucide-react';
+import { Menu, Search, ShoppingBag, User, X } from 'lucide-react';
 import { useStore } from '@/features/theme/ThemeProvider';
+import { LOGO_HEIGHT } from '@/features/theme/backgrounds';
 import { useCart } from '@/hooks/useCart';
 import { useCustomerStore } from '@/store/customer.store';
 import { categoryService } from '@/services/admin.service';
@@ -14,16 +15,36 @@ import { apiClient, unwrap } from '@/services/api-client';
  * One layout, every template. Which sections render and in what order comes
  * from the tenant's theme config, so a fashion store and a grocery store share
  * this file and still look nothing alike.
+ *
+ * Surfaces are named by role — `surface`, `surface-header`, `surface-muted` —
+ * rather than coloured directly, so a store on a dark background inverts as one
+ * piece instead of one component at a time. See index.css.
  */
 export function StorefrontLayout() {
   const store = useStore();
   const navigate = useNavigate();
+  const location = useLocation();
   const { data: cart } = useCart();
   const customer = useCustomerStore((s) => s.customer);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const [term, setTerm] = useState('');
 
   const itemCount = cart?.itemCount ?? 0;
+
+  // Closed by a completed navigation rather than by the click, so a redirect or
+  // the back button closes it too.
+  useEffect(() => {
+    setMenuOpen(false);
+    setSearchOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenuOpen(false);
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [menuOpen]);
 
   // Top-level categories only: a mega-menu is a design decision the tenant
   // has not been given a way to make yet.
@@ -49,6 +70,8 @@ export function StorefrontLayout() {
   });
 
   const announcement = announcements.data?.[0];
+  const navCategories = (categories.data ?? []).slice(0, 5);
+  const social = Object.entries(store.theme.socialLinks ?? {});
 
   const submitSearch = (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,78 +88,88 @@ export function StorefrontLayout() {
         // eating vertical space on a phone.
         <BannerLink
           href={announcement.linkUrl}
-          className="block bg-brand px-4 py-2 text-center text-xs text-white sm:text-sm"
+          className="block bg-brand px-4 py-2.5 text-center text-xs tracking-wide text-white sm:text-[13px]"
         >
-          <span>{announcement.title}</span>
+          <span className="font-medium">{announcement.title}</span>
           {announcement.subtitle && (
             <span className="ml-2 text-white/70">{announcement.subtitle}</span>
           )}
         </BannerLink>
       )}
 
-      <header className="sticky top-0 z-40 border-b border-ink-100 bg-white/90 backdrop-blur">
-        <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-          <Link to="/" className="flex items-center gap-2">
+      <header className="surface-header sticky top-0 z-40 border-b backdrop-blur-xl">
+        <div className="mx-auto flex h-[4.5rem] max-w-7xl items-center gap-4 px-4 sm:h-20 sm:px-8">
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            aria-label="Open menu"
+            className="-ml-2 rounded-full p-2 text-ink-700 transition-colors hover:bg-ink-50 md:hidden"
+          >
+            <Menu size={20} />
+          </button>
+
+          {/* The logo is given real room. A wordmark cropped to 32px reads as a
+              placeholder, which is the opposite of what a brand mark is for.
+              `object-contain` with a max width keeps a very wide logo from
+              pushing the navigation off the row. */}
+          <Link to="/" className="flex shrink-0 items-center">
             {store.theme.logoUrl ? (
-              <img src={store.theme.logoUrl} alt={store.name} className="h-8 w-auto" />
+              <img
+                src={store.theme.logoUrl}
+                alt={store.name}
+                className={`w-auto max-w-[11rem] object-contain object-left sm:max-w-[15rem] ${
+                  LOGO_HEIGHT[store.theme.logoSize] ?? LOGO_HEIGHT.md
+                }`}
+              />
             ) : (
-              <span className="font-display text-lg font-semibold tracking-tight text-brand">
+              <span className="surface-strong font-display text-xl font-semibold tracking-tight sm:text-2xl">
                 {store.name}
               </span>
             )}
           </Link>
 
-          <nav className="hidden items-center gap-8 text-sm md:flex">
-            <Link to="/shop" className="text-ink-700 hover:text-brand">
-              Shop
-            </Link>
-            {(categories.data ?? []).slice(0, 4).map((category) => (
-              <Link
-                key={category.id}
-                to={`/category/${category.slug}`}
-                className="text-ink-700 hover:text-brand"
-              >
+          <nav className="ml-6 hidden flex-1 items-center gap-7 text-sm md:flex">
+            <HeaderLink to="/shop">Shop</HeaderLink>
+            {navCategories.map((category) => (
+              <HeaderLink key={category.id} to={`/category/${category.slug}`}>
                 {category.name}
-              </Link>
+              </HeaderLink>
             ))}
           </nav>
 
-          <div className="flex items-center gap-1">
-            <button
+          <div className="ml-auto flex items-center gap-0.5">
+            <IconButton
+              label={searchOpen ? 'Close search' : 'Search'}
               onClick={() => setSearchOpen((open) => !open)}
-              aria-label={searchOpen ? 'Close search' : 'Search'}
-              aria-expanded={searchOpen}
-              className="rounded-card p-2 text-ink-700 hover:bg-ink-50"
+              expanded={searchOpen}
             >
-              {searchOpen ? <X size={18} /> : <Search size={18} />}
-            </button>
+              {searchOpen ? <X size={19} /> : <Search size={19} />}
+            </IconButton>
 
-            <Link
+            <IconLink
               to={customer ? '/account' : '/account/sign-in'}
-              aria-label={customer ? 'Your account' : 'Sign in'}
-              className="rounded-card p-2 text-ink-700 hover:bg-ink-50"
+              label={customer ? 'Your account' : 'Sign in'}
             >
-              <User size={18} />
-            </Link>
+              <User size={19} />
+            </IconLink>
 
-            <Link
+            <IconLink
               to="/cart"
-              aria-label={itemCount > 0 ? `Cart, ${itemCount} items` : 'Cart'}
-              className="relative rounded-card p-2 text-ink-700 hover:bg-ink-50"
+              label={itemCount > 0 ? `Cart, ${itemCount} items` : 'Cart'}
             >
-              <ShoppingBag size={18} />
+              <ShoppingBag size={19} />
               {itemCount > 0 && (
-                <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-brand px-1 text-[10px] font-medium leading-none text-white">
+                <span className="absolute right-0 top-0 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-brand px-1 text-[10px] font-semibold leading-none text-white ring-2 ring-white">
                   {itemCount > 99 ? '99+' : itemCount}
                 </span>
               )}
-            </Link>
+            </IconLink>
           </div>
         </div>
 
         {searchOpen && (
-          <div className="border-t border-ink-100 bg-white">
-            <form onSubmit={submitSearch} className="mx-auto max-w-6xl px-4 py-3 sm:px-6">
+          <div className="surface-line border-t">
+            <form onSubmit={submitSearch} className="mx-auto max-w-7xl px-4 py-4 sm:px-8">
               <input
                 autoFocus
                 type="search"
@@ -144,47 +177,218 @@ export function StorefrontLayout() {
                 onChange={(e) => setTerm(e.target.value)}
                 placeholder="Search products"
                 aria-label="Search products"
-                className="w-full rounded-card border border-ink-300 px-4 py-2.5 text-sm focus:border-brand focus:outline-none"
+                className="w-full rounded-full border border-ink-200 bg-white/70 px-5 py-3 text-sm text-ink-950 transition-colors placeholder:text-ink-400 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
               />
             </form>
           </div>
         )}
       </header>
 
+      {/* Below md the navigation is a drawer, so a phone still has a way to
+          reach categories without scrolling the whole homepage. */}
+      {menuOpen && (
+        <div className="fixed inset-0 z-50 md:hidden">
+          <div
+            className="absolute inset-0 bg-ink-950/50 animate-fade-in"
+            onClick={() => setMenuOpen(false)}
+          />
+          <nav className="absolute left-0 top-0 flex h-full w-72 flex-col bg-white shadow-dialog">
+            <div className="flex h-[4.5rem] items-center justify-between px-5">
+              <span className="font-display text-lg font-semibold text-ink-950">
+                {store.name}
+              </span>
+              <button
+                type="button"
+                onClick={() => setMenuOpen(false)}
+                aria-label="Close menu"
+                className="-mr-2 rounded-full p-2 text-ink-500 hover:bg-ink-50"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto px-3 pb-6">
+              <DrawerLink to="/shop">Shop everything</DrawerLink>
+              {navCategories.map((c) => (
+                <DrawerLink key={c.id} to={`/category/${c.slug}`}>
+                  {c.name}
+                </DrawerLink>
+              ))}
+              <div className="my-3 border-t border-ink-100" />
+              <DrawerLink to={customer ? '/account' : '/account/sign-in'}>
+                {customer ? 'Your account' : 'Sign in'}
+              </DrawerLink>
+              <DrawerLink to="/cart">Cart{itemCount > 0 ? ` (${itemCount})` : ''}</DrawerLink>
+              {(pages.data ?? []).map((page) => (
+                <DrawerLink key={page.slug} to={`/${page.slug}`}>
+                  {page.title}
+                </DrawerLink>
+              ))}
+            </div>
+          </nav>
+        </div>
+      )}
+
       <main className="flex-1">
         <Outlet />
       </main>
 
-      <footer className="mt-20 border-t border-ink-100 bg-ink-50">
-        <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
-          <p className="font-display text-base text-ink-900">{store.name}</p>
-          {store.description && (
-            <p className="mt-2 max-w-md text-sm text-ink-500">{store.description}</p>
-          )}
+      <footer className="surface-footer mt-24 border-t">
+        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-8 sm:py-20">
+          <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
+            <div className="lg:col-span-2">
+              {store.theme.logoUrl ? (
+                <img
+                  src={store.theme.logoUrl}
+                  alt={store.name}
+                  className="h-9 w-auto max-w-[13rem] object-contain object-left"
+                />
+              ) : (
+                <p className="surface-strong font-display text-xl tracking-tight">
+                  {store.name}
+                </p>
+              )}
+              {store.description && (
+                <p className="surface-muted mt-4 max-w-sm text-sm leading-relaxed">
+                  {store.description}
+                </p>
+              )}
+              {social.length > 0 && (
+                <div className="mt-6 flex flex-wrap gap-2">
+                  {social.map(([platform, url]) => (
+                    <a
+                      key={platform}
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer noopener"
+                      className="surface-line rounded-full border px-3.5 py-1.5 text-xs capitalize text-ink-700 transition-colors hover:border-brand hover:text-brand"
+                    >
+                      {platform}
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
 
-          <nav className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink-700">
-            <Link to="/shop" className="hover:text-brand">Shop</Link>
-            <Link to="/cart" className="hover:text-brand">Cart</Link>
-            <Link to={customer ? '/account' : '/account/sign-in'} className="hover:text-brand">
-              {customer ? 'Your account' : 'Sign in'}
-            </Link>
-            {customer && (
-              <Link to="/wishlist" className="hover:text-brand">
-                Saved items
-              </Link>
-            )}
-            {(pages.data ?? []).map((page) => (
-              <Link key={page.slug} to={`/${page.slug}`} className="hover:text-brand">
-                {page.title}
-              </Link>
-            ))}
-          </nav>
+            <FooterColumn title="Shop">
+              <FooterLink to="/shop">All products</FooterLink>
+              {navCategories.slice(0, 4).map((c) => (
+                <FooterLink key={c.id} to={`/category/${c.slug}`}>
+                  {c.name}
+                </FooterLink>
+              ))}
+            </FooterColumn>
 
-          <p className="mt-8 text-xs text-ink-500">
-            © {new Date().getFullYear()} {store.name}. All rights reserved.
-          </p>
+            <FooterColumn title="Your account">
+              <FooterLink to={customer ? '/account' : '/account/sign-in'}>
+                {customer ? 'Your account' : 'Sign in'}
+              </FooterLink>
+              <FooterLink to="/cart">Cart</FooterLink>
+              {customer && <FooterLink to="/wishlist">Saved items</FooterLink>}
+              {(pages.data ?? []).map((page) => (
+                <FooterLink key={page.slug} to={`/${page.slug}`}>
+                  {page.title}
+                </FooterLink>
+              ))}
+            </FooterColumn>
+          </div>
+
+          <div className="surface-line mt-14 flex flex-wrap items-center justify-between gap-3 border-t pt-8">
+            <p className="surface-muted text-xs">
+              © {new Date().getFullYear()} {store.name}. All rights reserved.
+            </p>
+            <p className="surface-muted text-xs">{store.email}</p>
+          </div>
         </div>
       </footer>
     </div>
+  );
+}
+
+/**
+ * A nav link with an underline that grows from the left on hover.
+ *
+ * Colour alone is a weak affordance on a storefront whose brand colour might be
+ * a pale gold; the rule gives the same feedback whatever the palette.
+ */
+function HeaderLink({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <Link to={to} className="group relative py-1 text-ink-700 transition-colors hover:text-brand">
+      {children}
+      <span className="absolute -bottom-0.5 left-0 h-px w-0 bg-brand transition-all duration-300 group-hover:w-full" />
+    </Link>
+  );
+}
+
+function IconButton({
+  label,
+  expanded,
+  onClick,
+  children,
+}: {
+  label: string;
+  expanded?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={label}
+      aria-expanded={expanded}
+      className="rounded-full p-2.5 text-ink-700 transition-colors hover:bg-ink-50 hover:text-brand"
+    >
+      {children}
+    </button>
+  );
+}
+
+function IconLink({
+  to,
+  label,
+  children,
+}: {
+  to: string;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      to={to}
+      aria-label={label}
+      className="relative rounded-full p-2.5 text-ink-700 transition-colors hover:bg-ink-50 hover:text-brand"
+    >
+      {children}
+    </Link>
+  );
+}
+
+function DrawerLink({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <Link
+      to={to}
+      className="block rounded-card px-3 py-2.5 text-sm text-ink-900 transition-colors hover:bg-ink-50 hover:text-brand"
+    >
+      {children}
+    </Link>
+  );
+}
+
+function FooterColumn({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="surface-strong text-[11px] font-semibold uppercase tracking-[0.14em]">
+        {title}
+      </p>
+      <nav className="mt-4 flex flex-col gap-2.5 text-sm">{children}</nav>
+    </div>
+  );
+}
+
+function FooterLink({ to, children }: { to: string; children: React.ReactNode }) {
+  return (
+    <Link to={to} className="text-ink-700 transition-colors hover:text-brand">
+      {children}
+    </Link>
   );
 }

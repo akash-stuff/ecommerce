@@ -74,9 +74,50 @@ model Tenant {
   shippingZones ShippingZone[]
   auditLogs     AuditLog[]
   notifications Notification[]
+  paymentGateways PaymentGateway[]
+  emailOtps     EmailOtp[]
 
   @@index([status])
   @@map("tenants")
+}
+
+/// A one-time code emailed to prove someone owns the address they registered
+/// with, plus the registration it will complete.
+///
+/// The Customer row is deliberately NOT created until the code is verified. An
+/// account that exists before its email is proven is an account someone else
+/// may own, it clutters the shopkeeper's customer list with abandoned
+/// registrations, and it lets one person squat an address they cannot read.
+/// Holding the pending details here instead means an unfinished registration
+/// leaves nothing behind but a row that expires.
+///
+/// `codeHash` is a hash for the same reason a password is: whoever can read
+/// this table must not be able to complete someone else's registration.
+model EmailOtp {
+  id        String   @id @default(uuid())
+  tenantId  String
+  email     String
+  /// Argon2 hash of the code. The code itself is only ever in the email.
+  codeHash  String
+  /// What finishing this challenge does. One value today; named so a password
+  /// reset can reuse the table without guessing what an existing row was for.
+  purpose   String
+  /// The registration this completes, already hashed. Null for purposes that
+  /// carry nothing.
+  pending   Json?
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  /// Set when the code is spent, so a replay cannot mint a second account.
+  consumedAt DateTime?
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  /// One live challenge per address per purpose per store: a resend replaces
+  /// the previous code rather than leaving several valid at once.
+  @@unique([tenantId, email, purpose])
+  @@index([expiresAt])
+  @@map("email_otps")
 }
 
 /// Platform identity. A single email is one User; tenant access is granted
@@ -282,6 +323,16 @@ model Theme {
   accentColor    String  @default("#111111")
   bodyFont       String  @default("Inter")
   headingFont    String  @default("Inter")
+  /// Header logo height: 'sm' | 'md' | 'lg'. One fixed size cannot suit both a
+  /// square mark and a long wordmark.
+  logoSize       String  @default("md")
+  /// Named page background from theme/backgrounds.ts. Rendered by the
+  /// storefront in the store's own colours, so the name is all that is stored.
+  background     String  @default("plain")
+  /// A custom background image, which takes precedence over the preset.
+  backgroundImageUrl String?
+  /// 'cover' for a photograph, 'tile' for a seamless texture.
+  backgroundFit  String  @default("cover")
   headerConfig   Json    @default("{}")
   footerConfig   Json    @default("{}")
   homepageLayout Json    @default("[]")
@@ -708,6 +759,40 @@ model Payment {
   @@unique([provider, providerRef])
   @@index([tenantId, orderId])
   @@map("payments")
+}
+
+/// A store's own payment gateway.
+///
+/// The whole point of the row: on a white-label platform the money must reach
+/// the *tenant's* merchant account, not the platform's. Credentials therefore
+/// live per tenant rather than in the platform environment, and the platform
+/// operator never needs to hold them.
+///
+/// Secrets are stored as AES-256-GCM envelopes, never as plaintext, and are
+/// never returned by the API — only whether each one is present. `publicKey` is
+/// the exception: a gateway's key id is published to the browser by design, so
+/// keeping it readable is what lets the admin show which account is connected.
+model PaymentGateway {
+  id        String  @id @default(uuid())
+  tenantId  String
+  /// Matches PaymentProvider.name — 'RAZORPAY', 'COD'.
+  provider  String
+  /// Off until the store finishes connecting it. Checkout offers nothing that
+  /// is not both enabled and completely configured.
+  isEnabled Boolean @default(false)
+  /// Publishable identifier, e.g. a Razorpay key id. Null for COD.
+  publicKey String?
+  /// Encrypted secrets, keyed by field name. Shape is the provider's business.
+  secrets   Json    @default("{}")
+  /// Free-text label the store sees, e.g. which account this is.
+  label     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, provider])
+  @@map("payment_gateways")
 }
 
 /// Idempotency guard for provider webhooks — a duplicate delivery hits this

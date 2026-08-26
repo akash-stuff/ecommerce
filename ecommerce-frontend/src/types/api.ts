@@ -39,6 +39,14 @@ export interface StoreTheme {
   secondaryColor: string;
   bodyFont: string;
   headingFont: string;
+  /** 'sm' | 'md' | 'lg' — the header logo height. */
+  logoSize: string;
+  /** Named preset; the storefront draws it in this store's colours. */
+  background: string;
+  /** An uploaded image, which overrides the preset. */
+  backgroundImageUrl: string | null;
+  /** 'cover' | 'tile' */
+  backgroundFit: string;
   socialLinks: Record<string, string>;
   homepageLayout: string[];
   /** Sanitised server-side; safe to place in a <style> block. */
@@ -52,7 +60,7 @@ export interface EditableTheme {
   metaTitle: string | null;
   metaDescription: string | null;
   isPublished: boolean;
-  template: { slug: string; name: string } | null;
+  template: { id: string; slug: string; name: string } | null;
   theme: {
     primaryColor: string;
     secondaryColor: string;
@@ -61,6 +69,10 @@ export interface EditableTheme {
     headingFont: string;
     logoUrl: string | null;
     faviconUrl: string | null;
+    logoSize: string;
+    background: string;
+    backgroundImageUrl: string | null;
+    backgroundFit: string;
     socialLinks: Record<string, string>;
     homepageLayout: string[];
     customCss: string | null;
@@ -77,7 +89,7 @@ export interface StoreConfig {
   phone: string | null;
   metaTitle: string | null;
   metaDescription: string | null;
-  template: { slug: string; name: string } | null;
+  template: { id: string; slug: string; name: string } | null;
   theme: StoreTheme;
 }
 
@@ -178,6 +190,7 @@ export interface Category {
   name: string;
   slug: string;
   description: string | null;
+  imageUrl: string | null;
   position: number;
   isActive: boolean;
   _count?: { children: number; products: number };

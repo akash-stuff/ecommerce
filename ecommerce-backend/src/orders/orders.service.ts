@@ -21,6 +21,7 @@ import { CartsService } from '../carts/carts.service';
 import { CouponsService } from '../coupons/coupons.service';
 import { InventoryService } from '../inventory/inventory.service';
 import { ShippingService } from '../shipping/shipping.service';
+import { GatewaysService } from '../payments/gateways.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AuditService } from '../audit/audit.service';
 import type { OrderEmailData } from '../notifications/templates';
@@ -60,6 +61,7 @@ export class OrdersService {
     private readonly coupons: CouponsService,
     private readonly inventory: InventoryService,
     private readonly shipping: ShippingService,
+    private readonly gateways: GatewaysService,
     private readonly notifications: NotificationsService,
     private readonly audit: AuditService,
   ) {}
@@ -94,6 +96,29 @@ export class OrdersService {
     }
 
     const isCod = (dto.paymentMethod ?? 'COD') === 'COD';
+
+    /**
+     * Does this store accept the method being asked for?
+     *
+     * Payment methods are per store now, and both are opt-in — so this can no
+     * longer be assumed. Without the check, a request made outside the
+     * storefront could place a cash order at a store that only takes prepaid,
+     * committing stock against money that will never be collected. Checked
+     * before the transaction, since it cannot change inside one.
+     */
+    const available = await this.gateways.availableFor();
+    const accepted = isCod
+      ? available.includes('COD')
+      : available.some((provider) => provider !== 'COD');
+
+    if (!accepted) {
+      throw new BadRequestException({
+        message: isCod
+          ? 'This store does not accept cash on delivery.'
+          : 'Online payment is not available at this store.',
+        code: 'PAYMENT_METHOD_NOT_ACCEPTED',
+      });
+    }
 
     const order = await this.prisma.db.$transaction(
       async (tx) => {

@@ -8,6 +8,7 @@ import { validateEnv } from './config/env.validation';
 
 import { PrismaModule } from './common/prisma/prisma.module';
 import { CacheModule } from './common/cache/cache.module';
+import { CryptoModule } from './common/crypto/crypto.module';
 import { AuthModule } from './auth/auth.module';
 import { TenantsModule } from './tenants/tenants.module';
 import { ProductsModule } from './products/products.module';
@@ -61,6 +62,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     }),
     PrismaModule,
     CacheModule,
+    CryptoModule,
     NotificationsModule,
     AuditModule,
     PlansModule,

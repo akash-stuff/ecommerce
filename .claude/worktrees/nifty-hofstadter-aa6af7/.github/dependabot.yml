@@ -1,0 +1,30 @@
+version: 2
+
+# Two independent apps with separate lockfiles, so two ecosystems. Grouping the
+# minor and patch bumps keeps this to one or two pull requests a week instead of
+# a dozen — a review queue nobody reads is the same as no updates at all.
+updates:
+  - package-ecosystem: npm
+    directory: /ecommerce-backend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      backend-minor-and-patch:
+        update-types: [minor, patch]
+    # Majors still arrive as their own PR: NestJS and Prisma majors need a
+    # migration, not a merge.
+
+  - package-ecosystem: npm
+    directory: /ecommerce-frontend
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      frontend-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly

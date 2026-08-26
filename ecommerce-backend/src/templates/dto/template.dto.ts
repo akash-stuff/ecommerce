@@ -13,6 +13,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { ALLOWED_FONTS, HOMEPAGE_SECTIONS } from '../../theme/dto/theme.dto';
+import { BACKGROUND_PRESETS, LOGO_SIZES } from '../../theme/backgrounds';
 
 /**
  * A template's default theme seeds every store created from it, so it is held
@@ -33,6 +34,21 @@ export class TemplateThemeDto {
 
   @ApiPropertyOptional({ enum: ALLOWED_FONTS })
   @IsOptional() @IsIn(ALLOWED_FONTS as unknown as string[]) headingFont?: string;
+
+  /**
+   * Part of a template's look, and validated here for the same reason fonts
+   * are: the value is a name the storefront resolves to CSS, so an unrecognised
+   * one leaves a page with no surface at all.
+   *
+   * Present on this DTO because the global pipe runs with `whitelist: true` —
+   * without it, a super admin editing a seeded template would silently strip
+   * the background it shipped with.
+   */
+  @ApiPropertyOptional({ enum: BACKGROUND_PRESETS })
+  @IsOptional() @IsIn(BACKGROUND_PRESETS as unknown as string[]) background?: string;
+
+  @ApiPropertyOptional({ enum: LOGO_SIZES })
+  @IsOptional() @IsIn(LOGO_SIZES as unknown as string[]) logoSize?: string;
 }
 
 /**

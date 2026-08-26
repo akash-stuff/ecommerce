@@ -25,4 +25,5 @@ export const PERMISSIONS = {
   SETTINGS_READ: 'settings.read',
   SETTINGS_UPDATE: 'settings.update',
   STAFF_MANAGE: 'staff.manage',
+  PAYMENTS_MANAGE: 'payments.manage',
 } as const;

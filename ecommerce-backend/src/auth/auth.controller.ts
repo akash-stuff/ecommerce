@@ -3,7 +3,13 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { Public, TenantOptional } from '../common/decorators';
-import { LoginDto, RefreshTokenDto, RegisterDto } from './dto/auth.dto';
+import {
+  LoginDto,
+  RefreshTokenDto,
+  RegisterDto,
+  ResendEmailOtpDto,
+  VerifyEmailOtpDto,
+} from './dto/auth.dto';
 
 @ApiTags('Authentication')
 @Controller('auth')
@@ -27,6 +33,34 @@ export class AuthController {
   @ApiOperation({ summary: 'Create a customer account on the current store' })
   registerCustomer(@Body() dto: RegisterDto) {
     return this.auth.registerCustomer(dto);
+  }
+
+  /**
+   * Finishes the registration the code was sent for, and signs the shopper in.
+   *
+   * Public, like registration itself: the code *is* the credential here.
+   */
+  @Public()
+  @Post('customer/verify-email')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Confirm the emailed code and create the account' })
+  verifyCustomerEmail(@Body() dto: VerifyEmailOtpDto) {
+    return this.auth.verifyCustomerEmail(dto);
+  }
+
+  @Public()
+  @Post('customer/resend-code')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Send another verification code',
+    description:
+      'Rate-limited per address. Answers the same whether or not a registration ' +
+      'is in progress, so it cannot be used to discover accounts.',
+  })
+  resendCustomerOtp(@Body() dto: ResendEmailOtpDto) {
+    return this.auth.resendCustomerOtp(dto);
   }
 
   @Public()

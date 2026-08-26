@@ -18,11 +18,110 @@
   :focus-visible {
     @apply outline-none ring-2 ring-brand ring-offset-2;
   }
+  /* The admin chrome is achromatic, so a brand-coloured focus ring there would
+     be the only saturated thing on screen and would read as an error state.
+     Inside admin, the ring picks up the chrome's own ink instead. */
+  .admin-chrome :focus-visible {
+    @apply ring-ink-950;
+  }
+
+  /* Native controls follow the surrounding scheme rather than the OS default,
+     which otherwise renders checkboxes and colour swatches in system blue. */
+  [type='checkbox'],
+  [type='radio'] {
+    accent-color: #17150f;
+  }
+}
+
+/* Declared here rather than in the Tailwind theme: nothing uses it through an
+   `animation-*` utility, and Tailwind only emits keyframes a utility claims. */
+@keyframes shimmer {
+  100% { transform: translateX(100%); }
+}
+
+/* ---------------------------------------------------------------------------
+   Dark surfaces.
+   `ThemeProvider` adds `.surface-dark` to <html> when the chosen background is
+   dark enough that body text has to invert. Kept as one block so the whole
+   storefront flips together — inverting colours component by component is how
+   you end up with unreadable borders on one card and not the next.
+   --------------------------------------------------------------------------- */
+@layer base {
+  .surface-dark body {
+    @apply text-ink-100;
+  }
+  /* Surfaces that were white become translucent, so the background shows
+     through instead of punching white holes in it. */
+  .surface-dark .surface,
+  .surface-dark .surface-header,
+  .surface-dark .surface-footer {
+    background-color: rgb(255 255 255 / 0.04);
+    border-color: rgb(255 255 255 / 0.10);
+    backdrop-filter: blur(12px);
+  }
+  .surface-dark .surface-muted {
+    @apply text-ink-300;
+  }
+  .surface-dark .surface-strong {
+    @apply text-white;
+  }
+  .surface-dark .surface-line {
+    border-color: rgb(255 255 255 / 0.10);
+  }
+}
+
+@layer utilities {
+  /* The default, light-surface versions of the classes above. Declared as
+     utilities so a component names the *role* — header, card, muted text — and
+     the surface decides what that looks like. */
+  .surface {
+    @apply border-ink-100 bg-white;
+  }
+  .surface-header {
+    @apply border-ink-100 bg-white/85;
+  }
+  .surface-footer {
+    @apply border-ink-100 bg-ink-50;
+  }
+  .surface-muted {
+    @apply text-ink-500;
+  }
+  .surface-strong {
+    @apply text-ink-950;
+  }
+  .surface-line {
+    @apply border-ink-100;
+  }
+
+  /* One rule for a placeholder block, so a loading table and a loading card
+     shimmer at the same rate instead of each inventing a timing. */
+  .skeleton {
+    @apply relative overflow-hidden rounded bg-ink-100;
+  }
+  .skeleton::after {
+    content: '';
+    @apply absolute inset-0;
+    background-image: linear-gradient(
+      90deg,
+      transparent,
+      rgb(255 255 255 / 0.65),
+      transparent
+    );
+    transform: translateX(-100%);
+    animation: shimmer 1.4s infinite;
+  }
+
+  /* Tabular figures for anything that gets scanned down a column — money and
+     counts jitter horribly in proportional digits. */
+  .numeric {
+    font-variant-numeric: tabular-nums;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
 }

@@ -1,8 +1,11 @@
 import {
-  Injectable,
-  UnauthorizedException,
+  BadRequestException,
   ConflictException,
   ForbiddenException,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -14,7 +17,19 @@ import { RequestContextStore } from '../common/context/request-context';
 import { resolvePermissions } from '../common/rbac/permissions';
 import { NotificationsService } from '../notifications/notifications.service';
 import type { AccessTokenPayload } from '../common/guards/jwt-auth.guard';
-import { LoginDto, RegisterDto } from './dto/auth.dto';
+import {
+  LoginDto,
+  RegisterDto,
+  ResendEmailOtpDto,
+  VerifyEmailOtpDto,
+} from './dto/auth.dto';
+import { EmailOtpService, OTP_TTL_SECONDS } from './email-otp.service';
+
+/**
+ * Namespaces the challenge, so a future password-reset code cannot be spent to
+ * complete a registration or the other way round.
+ */
+const OTP_PURPOSE_REGISTER = 'customer.register';
 
 export type CurrentActor =
   | {
@@ -51,7 +66,10 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly notifications: NotificationsService,
+    private readonly otp: EmailOtpService,
   ) {}
+
+  private readonly logger = new Logger(AuthService.name);
 
   // ---------------------------------------------------------------------------
   // Staff / admin authentication (platform User + TenantUser membership)
@@ -143,11 +161,27 @@ export class AuthService {
   // Storefront customer authentication (tenant-scoped Customer)
   // ---------------------------------------------------------------------------
 
-  async registerCustomer(dto: RegisterDto): Promise<TokenPair> {
+  /**
+   * Step one of registration: prove the address is readable.
+   *
+   * No Customer row is created here. An account that exists before its email is
+   * proven belongs to whoever typed the address, not to whoever owns it — and it
+   * lets one person squat an address they cannot read, and fills the
+   * shopkeeper's customer list with abandoned sign-ups. The details are held,
+   * already hashed, on the challenge and only become an account in
+   * `verifyCustomerEmail`.
+   */
+  async registerCustomer(dto: RegisterDto): Promise<{
+    otpRequired: true;
+    email: string;
+    expiresInSeconds: number;
+    resendInSeconds: number;
+  }> {
     const tenantId = RequestContextStore.requireTenantId();
+    const email = dto.email.toLowerCase();
 
     const existing = await this.prisma.db.customer.findFirst({
-      where: { email: dto.email.toLowerCase() },
+      where: { email },
       select: { id: true },
     });
     if (existing) {
@@ -157,16 +191,105 @@ export class AuthService {
       });
     }
 
+    // Hashed now rather than at verification, so the plaintext password lives
+    // only for this request and never sits in a database row.
+    const { code, challenge } = await this.otp.issue(email, OTP_PURPOSE_REGISTER, {
+      passwordHash: await this.hash(dto.password),
+      firstName: dto.firstName,
+      lastName: dto.lastName ?? null,
+      phone: dto.phone ?? null,
+    });
+
+    const store = await this.prisma.db.store.findFirst({
+      select: { name: true, email: true },
+    });
+
+    /**
+     * Awaited, and allowed to fail the request.
+     *
+     * Reporting "check your email" when the send failed leaves someone waiting
+     * for a code that is not coming, with no way to tell the difference from a
+     * slow inbox. Better to say so now, while they are still on the form.
+     */
+    try {
+      await this.notifications.emailVerificationCode(email, tenantId, {
+        storeName: store?.name ?? 'The store',
+        storeEmail: store?.email ?? email,
+        code,
+        expiresInMinutes: Math.round(OTP_TTL_SECONDS / 60),
+      });
+    } catch (error) {
+      await this.otp.forget(email, OTP_PURPOSE_REGISTER);
+      this.logger.error(`Could not send verification code: ${(error as Error).message}`);
+      throw new ServiceUnavailableException({
+        message: 'We could not send the verification email. Try again in a moment.',
+        code: 'VERIFICATION_EMAIL_FAILED',
+      });
+    }
+
+    return {
+      otpRequired: true,
+      email,
+      expiresInSeconds: challenge.expiresInSeconds,
+      resendInSeconds: challenge.resendInSeconds,
+    };
+  }
+
+  /**
+   * Step two: the code is right, so the account is created and signed in.
+   *
+   * The uniqueness check runs again. Two people can start a registration for the
+   * same address at the same store, and the one who verifies first owns it —
+   * checking only at step one would let the second overwrite the first.
+   */
+  async verifyCustomerEmail(dto: VerifyEmailOtpDto): Promise<TokenPair> {
+    const tenantId = RequestContextStore.requireTenantId();
+    const email = dto.email.toLowerCase();
+
+    const pending = await this.otp.consume(
+      email,
+      OTP_PURPOSE_REGISTER,
+      // Codes are read off a screen and retyped, often with the spacing the
+      // email used. Stripping it here means the shopper is not told their
+      // correct code is wrong.
+      dto.code.replace(/[\s-]/g, ''),
+    );
+
+    if (!pending?.passwordHash) {
+      throw new BadRequestException({
+        message: 'That code is not valid or has expired. Request a new one.',
+        code: 'OTP_INVALID',
+      });
+    }
+
+    const taken = await this.prisma.db.customer.findFirst({
+      where: { email },
+      select: { id: true },
+    });
+    if (taken) {
+      await this.otp.forget(email, OTP_PURPOSE_REGISTER);
+      throw new ConflictException({
+        message: 'An account with this email already exists at this store.',
+        code: 'EMAIL_TAKEN',
+      });
+    }
+
     const customer = await this.prisma.db.customer.create({
       // tenantId is injected by the tenant-scope extension at runtime.
       data: {
-        email: dto.email.toLowerCase(),
-        passwordHash: await this.hash(dto.password),
-        firstName: dto.firstName,
-        lastName: dto.lastName,
-        phone: dto.phone,
+        email,
+        passwordHash: pending.passwordHash as string,
+        firstName: pending.firstName as string,
+        lastName: (pending.lastName as string | null) ?? undefined,
+        phone: (pending.phone as string | null) ?? undefined,
+        // The whole point of the round trip.
+        emailVerifiedAt: new Date(),
       } as unknown as Prisma.CustomerCreateInput,
     });
+
+    // The challenge has served its purpose, and its stored copy of the rendered
+    // email contains the code. Dropped rather than left to expire.
+    await this.otp.forget(email, OTP_PURPOSE_REGISTER);
 
     const tokens = await this.issueTokens({
       sub: customer.id,
@@ -177,10 +300,10 @@ export class AuthService {
       permissions: [],
     });
 
-    // Never allowed to fail the registration it is congratulating.
     const store = await this.prisma.db.store.findFirst({
       select: { name: true, email: true },
     });
+    // Never allowed to fail the registration it is congratulating.
     await this.notifications
       .customerRegistered(customer.email, tenantId, {
         storeName: store?.name ?? 'The store',
@@ -190,6 +313,43 @@ export class AuthService {
       .catch(() => undefined);
 
     return tokens;
+  }
+
+  /**
+   * Another code for a registration already in progress.
+   *
+   * Answers the same way whether or not a challenge exists, so this cannot be
+   * used to discover which addresses are mid-registration. The cooldown inside
+   * `issue` is what stops it being used to flood an inbox.
+   */
+  async resendCustomerOtp(dto: ResendEmailOtpDto): Promise<{ sent: true }> {
+    const tenantId = RequestContextStore.requireTenantId();
+    const email = dto.email.toLowerCase();
+
+    const existing = await this.prisma.db.emailOtp.findFirst({
+      where: { email, purpose: OTP_PURPOSE_REGISTER },
+      select: { pending: true },
+    });
+
+    const pending = (existing?.pending ?? null) as Record<string, unknown> | null;
+    if (!pending?.passwordHash) {
+      // Nothing to resend. Reported as success on purpose.
+      return { sent: true };
+    }
+
+    const { code } = await this.otp.issue(email, OTP_PURPOSE_REGISTER, pending);
+
+    const store = await this.prisma.db.store.findFirst({
+      select: { name: true, email: true },
+    });
+    await this.notifications.emailVerificationCode(email, tenantId, {
+      storeName: store?.name ?? 'The store',
+      storeEmail: store?.email ?? email,
+      code,
+      expiresInMinutes: Math.round(OTP_TTL_SECONDS / 60),
+    });
+
+    return { sent: true };
   }
 
   async loginCustomer(dto: LoginDto): Promise<TokenPair> {

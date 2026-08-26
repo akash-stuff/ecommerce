@@ -4,6 +4,7 @@ import {
   IsNotEmpty,
   IsOptional,
   IsString,
+  Length,
   Matches,
   MaxLength,
   MinLength,
@@ -56,4 +57,23 @@ export class AuthTokensDto {
   @ApiProperty() accessToken!: string;
   @ApiProperty() refreshToken!: string;
   @ApiProperty() expiresIn!: number;
+}
+
+/**
+ * Finishing a registration.
+ *
+ * The code is a string, not a number: it is six digits *including* leading
+ * zeros, and a numeric type would turn `012345` into `12345`.
+ */
+export class VerifyEmailOtpDto {
+  @ApiProperty({ example: 'shopper@example.com' })
+  @IsEmail() email!: string;
+
+  @ApiProperty({ example: '123456', description: 'Spaces and dashes are ignored' })
+  @IsString() @Length(4, 16) code!: string;
+}
+
+export class ResendEmailOtpDto {
+  @ApiProperty({ example: 'shopper@example.com' })
+  @IsEmail() email!: string;
 }

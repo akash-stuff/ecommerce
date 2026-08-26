@@ -1,10 +1,12 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { SystemRole, TenantStatus } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { templateLook } from '../theme/template-look';
 import { TenantResolverService } from './tenant-resolver.service';
 import { AuditService } from '../audit/audit.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   paginate,
   PaginationQueryDto,
@@ -26,7 +28,10 @@ export class TenantsService {
     private readonly config: ConfigService,
     private readonly resolver: TenantResolverService,
     private readonly audit: AuditService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  private readonly logger = new Logger(TenantsService.name);
 
   async findAll(query: PaginationQueryDto): Promise<PaginatedResult<unknown>> {
     return this.prisma.runUnscoped(async (db) => {
@@ -90,7 +95,73 @@ export class TenantsService {
       },
     });
 
+    /**
+     * The setup email, after the transaction and after the audit entry.
+     *
+     * Not awaited, and unable to fail the request: the store, its theme, its
+     * domain and its owner are all committed by now. A store whose owner was
+     * not told is recoverable; reporting a failure for work that succeeded, and
+     * leaving the caller to guess whether the store exists, is not.
+     */
+    void this.sendSetupEmail(created, platformDomain);
+
     return created;
+  }
+
+  /**
+   * Tells a new owner that their store exists and where to sign in.
+   *
+   * Sent to the business address the store was created with, because that is
+   * the person who has to run it. Swallows its own errors — `create` has
+   * already returned by the time this settles.
+   */
+  private async sendSetupEmail(
+    created: {
+      id: string;
+      businessName: string;
+      store: { slug: string };
+      owner: { email: string; firstName: string };
+    },
+    platformDomain: string,
+  ): Promise<void> {
+    try {
+      /**
+       * The admin hostname comes from configuration rather than being guessed.
+       *
+       * `PLATFORM_ADMIN_HOSTS` is precisely the list of hostnames that must not
+       * resolve to a tenant, which is what an admin console is. `localhost` is
+       * in that list for local development and is not an address to send
+       * anyone, so it is passed over.
+       */
+      const adminHosts = this.config.get<string[]>('platform.adminHosts') ?? [];
+      const adminHost =
+        adminHosts.find((h) => h.startsWith('admin.')) ??
+        adminHosts.find((h) => h !== 'localhost') ??
+        `admin.${platformDomain}`;
+
+      // A `.localhost` platform is a development one and is served over http on
+      // the Vite port; anything else is expected to terminate TLS on 443.
+      const local = platformDomain === 'localhost' || platformDomain.endsWith('.localhost');
+      const origin = (host: string) => (local ? `http://${host}:5173` : `https://${host}`);
+
+      await this.notifications.storeSetup(created.owner.email, created.id, {
+        storeName: created.businessName,
+        ownerName: created.owner.firstName,
+        adminUrl: `${origin(adminHost)}/login`,
+        storefrontUrl: origin(`${created.store.slug}.${platformDomain}`),
+        platformName: platformDomain,
+        // The bare address, not the whole From header. `SMTP_FROM` may be
+        // `Display Name <addr@example.com>`, and "write to Display Name
+        // <addr@example.com>" is not something you can put in a sentence.
+        supportEmail: bareAddress(this.config.get<string>('smtp.from'))
+          ?? `support@${platformDomain}`,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Store "${created.businessName}" was created but its setup email failed: ` +
+          (error as Error).message,
+      );
+    }
   }
 
   private async provision(dto: CreateTenantDto, platformDomain: string) {
@@ -137,9 +208,28 @@ export class TenantsService {
           },
         });
 
-        const defaults = (template?.defaultTheme ?? {}) as Record<string, unknown>;
+        /**
+         * Read through `templateLook` rather than spread raw.
+         *
+         * Two reasons. `defaultTheme` is a Json column, so spreading it hands
+         * Prisma whatever keys the row happens to hold — including `tenantId`
+         * or `storeId`, which would quietly overwrite the two values that make
+         * this row belong to this store. And the layout lives in a *second*
+         * column that this never read, so a store created from the Grocery
+         * template arrived with an empty `homepageLayout` and fell back to the
+         * generic hero-and-featured page — which is most of what distinguishes
+         * one template from another.
+         */
+        const look = templateLook(template?.defaultTheme, template?.layoutConfig);
         await tx.theme.create({
-          data: { tenantId: tenant.id, storeId: store.id, ...defaults },
+          data: {
+            tenantId: tenant.id,
+            storeId: store.id,
+            // `homepageLayout` is absent from `look` when the template names
+            // no renderable section, which leaves the column at its `[]`
+            // default and the storefront's own fallback in charge.
+            ...look,
+          },
         });
 
         await tx.domain.create({
@@ -182,7 +272,12 @@ export class TenantsService {
           });
         }
 
-        return { ...tenant, store };
+        return {
+          ...tenant,
+          store,
+          // Carried out so `create` can email the owner without a second query.
+          owner: { email: owner.email, firstName: owner.firstName },
+        };
       });
     });
   }
@@ -269,4 +364,18 @@ export class TenantsService {
     }
     return tenant;
   }
+}
+
+/**
+ * The address out of an RFC 5322 mailbox.
+ *
+ * `Name <a@b.com>` becomes `a@b.com`; a bare address is returned unchanged.
+ * Null when there is nothing that looks like an address at all, so the caller
+ * can fall back rather than print a display name where an address belongs.
+ */
+function bareAddress(value: string | undefined): string | null {
+  if (!value) return null;
+  const angled = value.match(/<([^>]+)>/);
+  const candidate = (angled ? angled[1] : value).trim();
+  return candidate.includes('@') ? candidate : null;
 }

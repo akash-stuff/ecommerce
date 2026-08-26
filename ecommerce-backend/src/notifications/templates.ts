@@ -243,3 +243,150 @@ export function customerWelcome(data: {
 
   return { subject: `Welcome to ${data.storeName}`, html, text };
 }
+
+/**
+ * The verification code.
+ *
+ * Deliberately the plainest template here: no marketing, no images, one number
+ * shown large. A code email that looks like a promotion gets filtered, and the
+ * only thing the reader wants is six digits they can retype.
+ */
+export function emailVerificationCode(data: {
+  storeName: string;
+  storeEmail: string;
+  code: string;
+  expiresInMinutes: number;
+}): RenderedEmail {
+  const e = escapeHtml;
+  // Spaced for reading, not for typing — the form accepts it either way.
+  const spaced = data.code.replace(/(\d{3})(\d{3})/, '$1 $2');
+
+  const html = `
+<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#111">
+  <h1 style="font-size:20px;margin:0 0 4px">Confirm your email</h1>
+  <p style="color:#555;margin:0 0 20px">
+    Enter this code to finish creating your ${e(data.storeName)} account.
+  </p>
+  <p style="font-size:30px;letter-spacing:6px;font-weight:600;margin:0 0 20px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">
+    ${e(spaced)}
+  </p>
+  <p style="color:#555;margin:0 0 4px">
+    It expires in ${data.expiresInMinutes} minutes.
+  </p>
+  <p style="color:#888;font-size:13px;margin:0">
+    If you did not ask for this, ignore this email — no account is created until the code is entered.
+  </p>
+  <p style="color:#888;font-size:12px;margin-top:32px;border-top:1px solid #eee;padding-top:16px">
+    ${e(data.storeName)} · ${e(data.storeEmail)}
+  </p>
+</div>`.trim();
+
+  const text = [
+    `Confirm your email`,
+    ``,
+    `Enter this code to finish creating your ${data.storeName} account:`,
+    ``,
+    `    ${data.code}`,
+    ``,
+    `It expires in ${data.expiresInMinutes} minutes.`,
+    `If you did not ask for this, ignore this email — no account is created until the code is entered.`,
+    ``,
+    `${data.storeName} · ${data.storeEmail}`,
+  ].join('\n');
+
+  return { subject: `${data.code} is your ${data.storeName} verification code`, html, text };
+}
+
+/**
+ * The email a new store owner gets the moment their store is provisioned.
+ *
+ * Sent to the business address they were created with, not to a platform
+ * address: this is the message that tells someone their store exists and where
+ * to sign in, so it has to reach the person who will run it.
+ *
+ * The password is deliberately absent. Whoever created the store chose it and
+ * can pass it on; putting it in an email leaves a working credential sitting in
+ * an inbox forever. What is included is the one thing they cannot work out for
+ * themselves — the address their admin lives at — plus the short list of things
+ * a store cannot open without.
+ */
+export function storeSetup(data: {
+  storeName: string;
+  ownerName: string;
+  adminUrl: string;
+  storefrontUrl: string;
+  platformName: string;
+  supportEmail: string;
+  email: string;
+}): RenderedEmail {
+  const e = escapeHtml;
+
+  const steps: [string, string][] = [
+    ['Set up payments', 'Connect your own payment account, or switch on cash on delivery. Until one is active, shoppers cannot complete checkout.'],
+    ['Add your branding', 'Upload a logo, choose your colours and pick a background.'],
+    ['Add products', 'With photos — a catalogue without images does not sell.'],
+    ['Set delivery charges', 'Shipping zones and rates for where you deliver.'],
+    ['Publish', 'Your storefront stays private until you turn it on in Settings.'],
+  ];
+
+  const html = `
+<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#111">
+  <p style="color:#888;font-size:12px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 8px">
+    ${e(data.platformName)}
+  </p>
+  <h1 style="font-size:22px;margin:0 0 4px">${e(data.storeName)} is ready</h1>
+  <p style="color:#555;margin:0 0 20px">
+    Hello ${e(data.ownerName)} — your store has been created and you are its owner.
+  </p>
+
+  <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 0 24px">
+    <tr><td>
+      <a href="${e(data.adminUrl)}"
+         style="display:inline-block;background:#111;color:#fff;text-decoration:none;padding:12px 20px;border-radius:8px;font-weight:600;font-size:14px">
+        Open your admin
+      </a>
+    </td></tr>
+  </table>
+
+  <p style="color:#555;margin:0 0 6px;font-size:14px">
+    Sign in with <strong>${e(data.email)}</strong> and the password chosen when your store was set up.
+  </p>
+  <p style="color:#888;margin:0 0 24px;font-size:13px">
+    Your storefront: <a href="${e(data.storefrontUrl)}" style="color:#111">${e(data.storefrontUrl)}</a>
+  </p>
+
+  <h2 style="font-size:15px;margin:0 0 10px;border-top:1px solid #eee;padding-top:20px">
+    Five things to do first
+  </h2>
+  <ol style="color:#555;font-size:14px;padding-left:20px;margin:0 0 24px">
+    ${steps
+      .map(
+        ([title, detail]) =>
+          `<li style="margin-bottom:10px"><strong style="color:#111">${e(title)}.</strong> ${e(detail)}</li>`,
+      )
+      .join('\n    ')}
+  </ol>
+
+  <p style="color:#888;font-size:12px;margin-top:8px;border-top:1px solid #eee;padding-top:16px">
+    Questions? Reply to this email or write to ${e(data.supportEmail)}.
+  </p>
+</div>`.trim();
+
+  const text = [
+    `${data.storeName} is ready`,
+    ``,
+    `Hello ${data.ownerName} — your store has been created and you are its owner.`,
+    ``,
+    `Admin:      ${data.adminUrl}`,
+    `Storefront: ${data.storefrontUrl}`,
+    `Sign in as: ${data.email}`,
+    `Password:   the one chosen when your store was set up.`,
+    ``,
+    `Five things to do first:`,
+    ...steps.map(([title, detail], i) => `  ${i + 1}. ${title}. ${detail}`),
+    ``,
+    `Questions? Reply to this email or write to ${data.supportEmail}.`,
+  ].join('\n');
+
+  return { subject: `${data.storeName} is ready — here is your admin`, html, text };
+}

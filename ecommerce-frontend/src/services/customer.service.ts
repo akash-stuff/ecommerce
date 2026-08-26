@@ -31,13 +31,31 @@ function keep(tokens: TokenPair): TokenPair {
 }
 
 export const customerService = {
+  /**
+   * Starts a registration. Returns a challenge, not tokens — the account does
+   * not exist until the emailed code is confirmed, so there is nothing to sign
+   * in with yet.
+   */
   register: (payload: {
     email: string;
     password: string;
     firstName: string;
     lastName?: string;
     phone?: string;
-  }) => unwrap<TokenPair>(apiClient.post('/auth/customer/register', payload)).then(keep),
+  }) =>
+    unwrap<{
+      otpRequired: true;
+      email: string;
+      expiresInSeconds: number;
+      resendInSeconds: number;
+    }>(apiClient.post('/auth/customer/register', payload)),
+
+  /** Confirms the code, which is what actually creates the account. */
+  verifyEmail: (email: string, code: string) =>
+    unwrap<TokenPair>(apiClient.post('/auth/customer/verify-email', { email, code })).then(keep),
+
+  resendCode: (email: string) =>
+    unwrap<{ sent: true }>(apiClient.post('/auth/customer/resend-code', { email })),
 
   login: (email: string, password: string) =>
     unwrap<TokenPair>(apiClient.post('/auth/customer/login', { email, password })).then(keep),
