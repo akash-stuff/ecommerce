@@ -3,7 +3,9 @@ import { NotificationChannel, NotificationStatus, Prisma } from '@prisma/client'
 import { PrismaService } from '../common/prisma/prisma.service';
 import { RequestContextStore } from '../common/context/request-context';
 import { paginate, PaginatedResult, PaginationQueryDto } from '../common/dto/pagination.dto';
-import { MailerService } from './mailer.service';
+import { MailerService, type SendResult } from './mailer.service';
+import { SmsService } from './sms.service';
+import { orderPlacedSms, orderStatusSms } from './sms-templates';
 import {
   customerWelcome,
   orderConfirmation,
@@ -12,6 +14,16 @@ import {
   type RenderedEmail,
   type StatusEmailData,
 } from './templates';
+
+/**
+ * Text channels, in the order they are preferred.
+ *
+ * WhatsApp first where it is configured: it is cheaper than SMS, delivers
+ * richer receipts, and in the markets this platform targets it is the channel
+ * customers actually read. Only one is used per message — sending both is
+ * paying twice to tell someone the same thing.
+ */
+const TEXT_CHANNELS = [NotificationChannel.WHATSAPP, NotificationChannel.SMS] as const;
 
 /**
  * Outbound notifications.
@@ -32,27 +44,60 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mailer: MailerService,
+    private readonly sms: SmsService,
   ) {}
 
   // --- Public senders --------------------------------------------------------
 
-  orderPlaced(to: string, tenantId: string, data: OrderEmailData) {
-    return this.deliver({
+  /**
+   * `phone` is optional throughout: a text message is an addition to the email,
+   * never a replacement. The email is the record of the transaction and is sent
+   * regardless of whether a messaging channel is configured or reachable.
+   */
+  async orderPlaced(
+    to: string,
+    tenantId: string,
+    data: OrderEmailData,
+    phone?: string | null,
+  ): Promise<void> {
+    await this.deliverEmail({
       tenantId,
       event: 'order.placed',
       to,
       payload: { orderNumber: data.orderNumber, grandTotal: data.grandTotal },
       rendered: orderConfirmation(data),
     });
+
+    await this.deliverText({
+      tenantId,
+      event: 'order.placed',
+      phone,
+      body: orderPlacedSms(data),
+      payload: { orderNumber: data.orderNumber },
+    });
   }
 
-  orderStatus(to: string, tenantId: string, data: StatusEmailData) {
-    return this.deliver({
+  async orderStatus(
+    to: string,
+    tenantId: string,
+    data: StatusEmailData,
+    phone?: string | null,
+  ): Promise<void> {
+    await this.deliverEmail({
       tenantId,
       event: `order.${data.status.toLowerCase()}`,
       to,
       payload: { orderNumber: data.orderNumber, status: data.status },
       rendered: orderStatusChanged(data),
+    });
+
+    // Null for the statuses not worth a text; see sms-templates.
+    await this.deliverText({
+      tenantId,
+      event: `order.${data.status.toLowerCase()}`,
+      phone,
+      body: orderStatusSms(data),
+      payload: { orderNumber: data.orderNumber, status: data.status },
     });
   }
 
@@ -61,7 +106,9 @@ export class NotificationsService {
     tenantId: string,
     data: { storeName: string; storeEmail: string; customerName: string },
   ) {
-    return this.deliver({
+    // Email only, deliberately. A text message triggered by signing up is
+    // marketing, not a transaction, and consent for it has not been asked for.
+    return this.deliverEmail({
       tenantId,
       event: 'customer.registered',
       to,
@@ -111,25 +158,59 @@ export class NotificationsService {
       }),
     );
 
+    let attempted = 0;
     let sent = 0;
-    for (const row of pending) {
-      const payload = row.payload as { html?: string; text?: string };
-      // Only rows that stored their rendered body can be replayed; older rows
-      // would need re-rendering from live data and are left alone.
-      if (!payload.html || !payload.text || !row.subject) continue;
 
-      const result = await this.mailer.send({
+    for (const row of pending) {
+      const result = await this.replay(row);
+      // Only rows that stored enough to be re-sent are counted as attempts, so
+      // "0 of 0" is reported rather than a run that appears to have failed.
+      if (!result) continue;
+
+      attempted += 1;
+      await this.record(row.id, result);
+      if (result.sent) sent += 1;
+    }
+
+    return { attempted, sent };
+  }
+
+  /**
+   * Re-sends a stored notification on its own channel, or null if it cannot be.
+   *
+   * Replayed from the stored payload rather than re-rendered: the order it
+   * described may have changed since, and sending a *different* message than
+   * the one that failed is worse than sending nothing.
+   */
+  private replay(row: {
+    channel: NotificationChannel;
+    recipient: string;
+    subject: string | null;
+    payload: Prisma.JsonValue;
+  }): Promise<SendResult> | null {
+    const payload = (row.payload ?? {}) as { html?: string; text?: string; body?: string };
+
+    if (row.channel === NotificationChannel.EMAIL) {
+      if (!payload.html || !payload.text || !row.subject) return null;
+      return this.mailer.send({
         to: row.recipient,
         subject: row.subject,
         html: payload.html,
         text: payload.text,
       });
-
-      await this.record(row.id, result);
-      if (result.sent) sent += 1;
     }
 
-    return { attempted: pending.length, sent };
+    if (
+      row.channel === NotificationChannel.SMS ||
+      row.channel === NotificationChannel.WHATSAPP
+    ) {
+      if (!payload.body) return null;
+      return this.sms.send({ to: row.recipient, body: payload.body, channel: row.channel });
+    }
+
+    // IN_APP has no transport yet; its rows are left untouched rather than
+    // counted as failures against a sender that does not exist.
+    return null;
   }
 
   // --- Internals -------------------------------------------------------------
@@ -139,39 +220,29 @@ export class NotificationsService {
    * still be able to take orders, so a delivery failure is logged and stored,
    * not propagated into the caller's transaction.
    */
-  private async deliver(input: {
+  private async deliverEmail(input: {
     tenantId: string;
     event: string;
     to: string;
     payload: Record<string, unknown>;
     rendered: RenderedEmail;
   }): Promise<void> {
-    let notificationId: string;
+    const notificationId = await this.queue({
+      tenantId: input.tenantId,
+      channel: NotificationChannel.EMAIL,
+      event: input.event,
+      recipient: input.to,
+      subject: input.rendered.subject,
+      // The rendered body is stored so a failed send can be replayed exactly as
+      // it was composed, not re-derived from changed data.
+      payload: {
+        ...input.payload,
+        html: input.rendered.html,
+        text: input.rendered.text,
+      },
+    });
 
-    try {
-      const row = await this.prisma.runUnscoped((db) =>
-        db.notification.create({
-          data: {
-            tenantId: input.tenantId,
-            channel: NotificationChannel.EMAIL,
-            event: input.event,
-            recipient: input.to,
-            subject: input.rendered.subject,
-            // The rendered body is stored so a failed send can be replayed
-            // exactly as it was composed, not re-derived from changed data.
-            payload: {
-              ...input.payload,
-              html: input.rendered.html,
-              text: input.rendered.text,
-            } as Prisma.InputJsonValue,
-          },
-        }),
-      );
-      notificationId = row.id;
-    } catch (error) {
-      this.logger.error(`Could not queue ${input.event}: ${(error as Error).message}`);
-      return;
-    }
+    if (!notificationId) return;
 
     const result = await this.mailer.send({
       to: input.to,
@@ -183,6 +254,74 @@ export class NotificationsService {
     await this.record(notificationId, result).catch((e) =>
       this.logger.error(`Could not record notification outcome: ${(e as Error).message}`),
     );
+  }
+
+  /**
+   * Sends on the first configured text channel, or does nothing at all.
+   *
+   * Nothing is queued when there is no phone number, no configured channel, or
+   * no message for this event. A QUEUED row that could never have been sent is
+   * noise in the admin log and makes "retry failed" a button that can never
+   * succeed — an absent notification is the honest record of a channel the
+   * store has not set up.
+   */
+  private async deliverText(input: {
+    tenantId: string;
+    event: string;
+    phone?: string | null;
+    body: string | null;
+    payload: Record<string, unknown>;
+  }): Promise<void> {
+    if (!input.phone || !input.body) return;
+
+    const channel = TEXT_CHANNELS.find((c) => this.sms.isConfigured(c));
+    if (!channel) return;
+
+    const notificationId = await this.queue({
+      tenantId: input.tenantId,
+      channel,
+      event: input.event,
+      recipient: input.phone,
+      subject: null,
+      payload: { ...input.payload, body: input.body },
+    });
+
+    if (!notificationId) return;
+
+    const result = await this.sms.send({ to: input.phone, body: input.body, channel });
+
+    await this.record(notificationId, result).catch((e) =>
+      this.logger.error(`Could not record notification outcome: ${(e as Error).message}`),
+    );
+  }
+
+  /** Returns the row id, or null when even queuing failed. */
+  private async queue(input: {
+    tenantId: string;
+    channel: NotificationChannel;
+    event: string;
+    recipient: string;
+    subject: string | null;
+    payload: Record<string, unknown>;
+  }): Promise<string | null> {
+    try {
+      const row = await this.prisma.runUnscoped((db) =>
+        db.notification.create({
+          data: {
+            tenantId: input.tenantId,
+            channel: input.channel,
+            event: input.event,
+            recipient: input.recipient,
+            subject: input.subject,
+            payload: input.payload as Prisma.InputJsonValue,
+          },
+        }),
+      );
+      return row.id;
+    } catch (error) {
+      this.logger.error(`Could not queue ${input.event}: ${(error as Error).message}`);
+      return null;
+    }
   }
 
   private record(id: string, result: { sent: boolean; reason?: string }) {

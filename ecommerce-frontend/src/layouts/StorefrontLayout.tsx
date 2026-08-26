@@ -6,6 +6,8 @@ import { useStore } from '@/features/theme/ThemeProvider';
 import { useCart } from '@/hooks/useCart';
 import { useCustomerStore } from '@/store/customer.store';
 import { categoryService } from '@/services/admin.service';
+import { bannerService } from '@/services/store.service';
+import { BannerLink } from '@/components/BannerLink';
 import { apiClient, unwrap } from '@/services/api-client';
 
 /**
@@ -38,6 +40,16 @@ export function StorefrontLayout() {
     staleTime: 5 * 60_000,
   });
 
+  // A scheduled strip above the header. Usually absent, so its own query keeps
+  // it off the critical path of the store config every page already waits on.
+  const announcements = useQuery({
+    queryKey: ['banners', 'SITE_ANNOUNCEMENT'],
+    queryFn: () => bannerService.live('SITE_ANNOUNCEMENT'),
+    staleTime: 5 * 60_000,
+  });
+
+  const announcement = announcements.data?.[0];
+
   const submitSearch = (e: React.FormEvent) => {
     e.preventDefault();
     if (!term.trim()) return;
@@ -48,6 +60,20 @@ export function StorefrontLayout() {
 
   return (
     <div className="flex min-h-screen flex-col">
+      {announcement && (
+        // Above the sticky header, so it scrolls away instead of permanently
+        // eating vertical space on a phone.
+        <BannerLink
+          href={announcement.linkUrl}
+          className="block bg-brand px-4 py-2 text-center text-xs text-white sm:text-sm"
+        >
+          <span>{announcement.title}</span>
+          {announcement.subtitle && (
+            <span className="ml-2 text-white/70">{announcement.subtitle}</span>
+          )}
+        </BannerLink>
+      )}
+
       <header className="sticky top-0 z-40 border-b border-ink-100 bg-white/90 backdrop-blur">
         <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
           <Link to="/" className="flex items-center gap-2">

@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { productService } from '@/services/store.service';
+import { bannerService, productService } from '@/services/store.service';
+import { BannerLink } from '@/components/BannerLink';
 import { categoryService } from '@/services/admin.service';
 import { useStore } from '@/features/theme/ThemeProvider';
 import { formatMoney } from '@/utils/format';
@@ -28,8 +29,61 @@ export function isSectionKey(value: string): value is SectionKey {
   return value in SECTIONS;
 }
 
+/**
+ * A tenant's scheduled hero banner when there is one, otherwise the store's own
+ * name and description.
+ *
+ * The typographic hero is the fallback rather than the banner being an extra
+ * section, because two stacked heroes is not a layout anyone chose. While the
+ * banner query is in flight nothing is rendered in its place — swapping a text
+ * hero for an image a moment later is a worse first impression than a brief gap.
+ */
 function Hero() {
   const store = useStore();
+
+  const banners = useQuery({
+    queryKey: ['banners', 'HOME_HERO'],
+    queryFn: () => bannerService.live('HOME_HERO'),
+    staleTime: 5 * 60_000,
+  });
+
+  if (banners.isLoading) return <div className="h-[22rem] border-b border-ink-100" />;
+
+  // The API requires an image for this placement; the check keeps a row written
+  // before that rule existed from rendering an empty <img>.
+  const banner = banners.data?.find((b) => b.imageUrl);
+
+  if (banner?.imageUrl) {
+    return (
+      <section className="border-b border-ink-100">
+        <BannerLink href={banner.linkUrl} className="group relative block">
+          <img
+            src={banner.imageUrl}
+            alt={banner.title ?? ''}
+            className="h-[22rem] w-full object-cover sm:h-[28rem]"
+          />
+          {(banner.title || banner.subtitle) && (
+            <>
+              {/* Scrim, so light text stays readable over an unknown image. */}
+              <div className="absolute inset-0 bg-gradient-to-t from-ink-950/70 to-transparent" />
+              <div className="absolute inset-x-0 bottom-0 mx-auto max-w-6xl px-4 pb-10 sm:px-6 sm:pb-14">
+                {banner.title && (
+                  <h1 className="max-w-2xl font-display text-3xl leading-tight tracking-tight text-white sm:text-5xl">
+                    {banner.title}
+                  </h1>
+                )}
+                {banner.subtitle && (
+                  <p className="mt-3 max-w-lg text-sm text-white/80 sm:text-base">
+                    {banner.subtitle}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
+        </BannerLink>
+      </section>
+    );
+  }
 
   return (
     <section className="border-b border-ink-100">

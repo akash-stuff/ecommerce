@@ -38,6 +38,15 @@ export const PERMISSIONS = {
   THEME_UPDATE: 'theme.update',
   PAGES_WRITE: 'pages.write',
 
+  /**
+   * One permission for all uploads rather than one per feature. Product images,
+   * logos and banners all end up in the same bucket under the same tenant
+   * prefix, so splitting the grant would suggest an isolation that does not
+   * exist. STAFF does not get it: staff read the catalogue, they do not put
+   * files on the store's own origin.
+   */
+  MEDIA_UPLOAD: 'media.upload',
+
   STAFF_READ: 'staff.read',
   STAFF_MANAGE: 'staff.manage',
 

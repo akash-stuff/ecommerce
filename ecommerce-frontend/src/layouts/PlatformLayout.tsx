@@ -1,11 +1,14 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
-import { Building2, CreditCard, LayoutDashboard, LogOut, ScrollText } from 'lucide-react';
+import {
+  Building2, CreditCard, LayoutDashboard, LayoutTemplate, LogOut, ScrollText,
+} from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 
 const NAV = [
   { to: '/platform', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/platform/tenants', label: 'Stores', icon: Building2 },
   { to: '/platform/plans', label: 'Plans', icon: CreditCard },
+  { to: '/platform/templates', label: 'Templates', icon: LayoutTemplate },
   { to: '/platform/audit', label: 'Audit log', icon: ScrollText },
 ];
 

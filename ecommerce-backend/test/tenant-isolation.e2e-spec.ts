@@ -2,6 +2,8 @@ import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import * as argon2 from 'argon2';
+import { unlink } from 'node:fs/promises';
+import { resolve } from 'node:path';
 import { AppModule } from '../src/app.module';
 import { configureApp } from '../src/bootstrap';
 import { PrismaService } from '../src/common/prisma/prisma.service';
@@ -56,6 +58,16 @@ describe('Tenant isolation (e2e)', () => {
       // go first while the ids are still resolvable.
       await db.auditLog.deleteMany({
         where: { user: { email: 'platform-e2e@example.test' } },
+      });
+      // Templates the template test creates. It removes its own, but an
+      // interrupted run leaves them behind and the unique slug then fails the
+      // next run on setup rather than on anything it was testing.
+      await db.store.updateMany({
+        where: { template: { slug: { in: ['e2e-template', 'e2e-spare'] } } },
+        data: { templateId: null },
+      });
+      await db.template.deleteMany({
+        where: { slug: { in: ['e2e-template', 'e2e-spare'] } },
       });
       await db.tenant.deleteMany({
         where: {
@@ -182,6 +194,43 @@ describe('Tenant isolation (e2e)', () => {
         await db.theme.create({
           data: { tenantId: tenant.id, storeId: store.id, primaryColor: t.color },
         });
+
+        // A live hero banner per tenant. Both carry the same title, so a leak
+        // surfaces as the *other* tenant's id rather than as different copy.
+        const banner = await db.banner.create({
+          data: {
+            tenantId: tenant.id,
+            placement: 'HOME_HERO',
+            title: 'Shared Banner Title',
+            imageUrl: `https://cdn.example.test/${t.slug}.jpg`,
+            linkUrl: '/shop',
+          },
+        });
+        ids[`${t.slug}:banner`] = banner.id;
+
+        // Two banners that must never reach a shopper: one whose window has
+        // closed, one whose window has not opened. Scheduling is evaluated on
+        // read rather than by a job, so these rows are what prove it.
+        const expiredBanner = await db.banner.create({
+          data: {
+            tenantId: tenant.id,
+            placement: 'SITE_ANNOUNCEMENT',
+            title: 'Expired Announcement',
+            startsAt: new Date('2020-01-01T00:00:00.000Z'),
+            endsAt: new Date('2020-02-01T00:00:00.000Z'),
+          },
+        });
+        ids[`${t.slug}:banner-expired`] = expiredBanner.id;
+
+        const futureBanner = await db.banner.create({
+          data: {
+            tenantId: tenant.id,
+            placement: 'SITE_ANNOUNCEMENT',
+            title: 'Future Announcement',
+            startsAt: new Date('2099-01-01T00:00:00.000Z'),
+          },
+        });
+        ids[`${t.slug}:banner-future`] = futureBanner.id;
       }
     });
 
@@ -1777,6 +1826,90 @@ describe('Tenant isolation (e2e)', () => {
     });
   });
 
+  /**
+   * Social scrapers read the first response and never run JavaScript, so a
+   * client-rendered shell previewed as a blank card titled "Store". These
+   * routes serve the same shell with real tags already in the head.
+   */
+  describe('server-rendered meta', () => {
+    it('puts the product name, price and canonical in the first response', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/__ssr/product/shared-widget')
+        .set('Host', A.host)
+        .expect(200);
+
+      expect(res.headers['content-type']).toContain('text/html');
+      expect(res.text).toContain('<meta property="og:type" content="product">');
+      expect(res.text).toMatch(/<meta property="og:title" content="[^"]*Shared Name Widget/);
+      expect(res.text).toContain('product:price:amount');
+      expect(res.text).toContain(`${A.host}/product/shared-widget`);
+    });
+
+    it('never leaves two title tags in the document', async () => {
+      const res = await request(app.getHttpServer())
+        .get('/__ssr/product/shared-widget')
+        .set('Host', A.host)
+        .expect(200);
+
+      // The shell ships a placeholder title; two of them is invalid HTML and
+      // scrapers disagree about which one wins.
+      expect(res.text.match(/<title>/g) ?? []).toHaveLength(1);
+    });
+
+    it('describes each store with its own details on a shared slug', async () => {
+      const a = await request(app.getHttpServer())
+        .get('/__ssr/product/shared-widget').set('Host', A.host).expect(200);
+      const b = await request(app.getHttpServer())
+        .get('/__ssr/product/shared-widget').set('Host', B.host).expect(200);
+
+      expect(a.text).toContain(`${A.host}/product/shared-widget`);
+      expect(b.text).toContain(`${B.host}/product/shared-widget`);
+      expect(a.text).not.toContain(B.host);
+    });
+
+    it('escapes a product name that contains markup', async () => {
+      const nasty = await prisma.runUnscoped((db) =>
+        db.product.create({
+          data: {
+            tenantId: ids['tenant-a:tenant'],
+            name: '<script>alert(1)</script>',
+            slug: `nasty-${Date.now()}`,
+            sku: `NASTY-${Date.now()}`,
+            price: 10,
+            status: 'ACTIVE',
+          },
+        }),
+      );
+
+      const res = await request(app.getHttpServer())
+        .get(`/__ssr/product/${nasty.slug}`)
+        .set('Host', A.host)
+        .expect(200);
+
+      // A product name reaches the <head> as an attribute value, so it is the
+      // same injection surface as a page body.
+      expect(res.text).not.toContain('<script>alert(1)</script>');
+      expect(res.text).toContain('&lt;script&gt;');
+
+      await prisma.runUnscoped((db) => db.product.delete({ where: { id: nasty.id } }));
+    });
+
+    it('still returns the shell for a product that does not exist', async () => {
+      // The SPA renders its own "no longer available" page; a 404 here would
+      // replace that with the proxy's error page.
+      await request(app.getHttpServer())
+        .get('/__ssr/product/no-such-product')
+        .set('Host', A.host)
+        .expect(200);
+    });
+
+    it('serves the store and category shells too', async () => {
+      await request(app.getHttpServer()).get('/__ssr/home').set('Host', A.host).expect(200);
+      await request(app.getHttpServer())
+        .get('/__ssr/category/shared-category').set('Host', A.host).expect(200);
+    });
+  });
+
   it('serves each hostname its own store branding', async () => {
     const a = await request(app.getHttpServer())
       .get('/api/v1/store').set('Host', A.host).expect(200);
@@ -1853,5 +1986,244 @@ describe('Tenant isolation (e2e)', () => {
       .set('Host', A.host)
       .set('Authorization', `Bearer ${tokenA}`)
       .expect(403);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Banners, templates and uploads.
+  //
+  // These three arrived after the original suite, and two of them are new
+  // tenant-scoped surfaces — which is exactly where isolation regressions get
+  // introduced.
+  // ---------------------------------------------------------------------------
+
+  it('returns only the requesting tenant\'s banners', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/banners')
+      .set('Host', A.host)
+      .expect(200);
+
+    const returned = res.body.data.map((b: any) => b.id);
+    expect(returned).toContain(ids['tenant-a:banner']);
+    expect(returned).not.toContain(ids['tenant-b:banner']);
+  });
+
+  /**
+   * The schedule is applied in the query, so an expired or not-yet-started
+   * banner is absent from the public response rather than filtered in the
+   * browser. A storefront must never receive a promotion it should not show.
+   */
+  it('withholds scheduled and expired banners from shoppers', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/banners')
+      .set('Host', A.host)
+      .expect(200);
+
+    const returned = res.body.data.map((b: any) => b.id);
+    expect(returned).not.toContain(ids['tenant-a:banner-expired']);
+    expect(returned).not.toContain(ids['tenant-a:banner-future']);
+  });
+
+  it('still shows the owner those banners, marked not live', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/api/v1/banners/admin')
+      .set('Host', A.host)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(200);
+
+    const rows: any[] = res.body.data;
+    expect(rows.find((b) => b.id === ids['tenant-a:banner-expired'])?.isLive).toBe(false);
+    expect(rows.find((b) => b.id === ids['tenant-a:banner-future'])?.isLive).toBe(false);
+    expect(rows.find((b) => b.id === ids['tenant-a:banner'])?.isLive).toBe(true);
+    // And still nothing belonging to the other tenant.
+    expect(rows.map((b) => b.id)).not.toContain(ids['tenant-b:banner']);
+  });
+
+  it('404s when tenant A edits or deletes tenant B\'s banner', async () => {
+    await request(app.getHttpServer())
+      .put(`/api/v1/banners/${ids['tenant-b:banner']}`)
+      .set('Host', A.host)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ title: 'Hijacked' })
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .delete(`/api/v1/banners/${ids['tenant-b:banner']}`)
+      .set('Host', A.host)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .expect(404);
+
+    // The row is untouched, not merely the response unhelpful.
+    const still = await prisma.runUnscoped((db) =>
+      db.banner.findUnique({ where: { id: ids['tenant-b:banner'] } }),
+    );
+    expect(still?.title).toBe('Shared Banner Title');
+  });
+
+  /**
+   * `linkUrl` becomes an href, which React does not escape. The unit suite
+   * covers the sanitiser itself; this proves it is wired into the write path
+   * rather than sitting unused beside it.
+   */
+  it('strips a javascript: banner link on write', async () => {
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/banners')
+      .set('Host', A.host)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({
+        placement: 'HOME_HERO',
+        imageUrl: 'https://cdn.example.test/x.jpg',
+        title: 'Sanitise me',
+        linkUrl: 'javascript:alert(1)',
+      })
+      .expect(201);
+
+    expect(res.body.data.linkUrl).toBeNull();
+
+    await prisma.runUnscoped((db) => db.banner.delete({ where: { id: res.body.data.id } }));
+  });
+
+  it('refuses a hero with no image and an announcement with no message', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/banners')
+      .set('Host', A.host)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ placement: 'HOME_HERO', title: 'No image' })
+      .expect(400);
+
+    await request(app.getHttpServer())
+      .post('/api/v1/banners')
+      .set('Host', A.host)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .send({ placement: 'SITE_ANNOUNCEMENT', imageUrl: 'https://cdn.example.test/x.jpg' })
+      .expect(400);
+  });
+
+  it('keeps template management off limits to a tenant owner', async () => {
+    for (const path of [
+      '/api/v1/platform/templates',
+      '/api/v1/platform/templates/gallery',
+      '/api/v1/platform/templates/options',
+    ]) {
+      await request(app.getHttpServer())
+        .get(path)
+        .set('Host', A.host)
+        .set('Authorization', `Bearer ${tokenA}`)
+        .expect(403);
+    }
+  });
+
+  /**
+   * A template is copied into a store's theme at provisioning, so retiring one
+   * is safe and deleting one is not. The API has to say which, rather than
+   * letting a foreign key surface as a 500.
+   */
+  it('refuses to delete a template a store used, but allows retiring it', async () => {
+    // Nothing has been built from this one, so it may be deleted. Proving that
+    // first means the refusal below is about the store, not a broken route.
+    const spare = await prisma.runUnscoped((db) =>
+      db.template.create({
+        data: { name: 'E2E Spare', slug: 'e2e-spare', category: 'test' },
+      }),
+    );
+    await request(app.getHttpServer())
+      .delete(`/api/v1/platform/templates/${spare.id}`)
+      .set('Host', PLATFORM_HOST)
+      .set('Authorization', `Bearer ${superToken}`)
+      .expect(204);
+
+    const template = await prisma.runUnscoped((db) =>
+      db.template.create({
+        data: { name: 'E2E Template', slug: 'e2e-template', category: 'test' },
+      }),
+    );
+
+    await prisma.runUnscoped((db) =>
+      db.store.update({
+        where: { id: ids['tenant-a:store'] },
+        data: { templateId: template.id },
+      }),
+    );
+
+    await request(app.getHttpServer())
+      .delete(`/api/v1/platform/templates/${template.id}`)
+      .set('Host', PLATFORM_HOST)
+      .set('Authorization', `Bearer ${superToken}`)
+      .expect(409);
+
+    // Retiring is always allowed and takes it out of the gallery.
+    await request(app.getHttpServer())
+      .put(`/api/v1/platform/templates/${template.id}`)
+      .set('Host', PLATFORM_HOST)
+      .set('Authorization', `Bearer ${superToken}`)
+      .send({ isActive: false })
+      .expect(200);
+
+    const gallery = await request(app.getHttpServer())
+      .get('/api/v1/platform/templates/gallery')
+      .set('Host', PLATFORM_HOST)
+      .set('Authorization', `Bearer ${superToken}`)
+      .expect(200);
+    expect(gallery.body.data.map((t: any) => t.id)).not.toContain(template.id);
+
+    await prisma.runUnscoped(async (db) => {
+      await db.store.update({
+        where: { id: ids['tenant-a:store'] },
+        data: { templateId: null },
+      });
+      await db.template.delete({ where: { id: template.id } });
+    });
+  });
+
+  /**
+   * The stored key is what decides which tenant an object belongs to, and it is
+   * generated rather than taken from the filename. A key not leading with this
+   * tenant's id would put one store's uploads inside another's prefix.
+   */
+  it('stores an upload under the uploading tenant\'s own prefix', async () => {
+    const png = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.alloc(64),
+    ]);
+
+    const res = await request(app.getHttpServer())
+      .post('/api/v1/media/upload')
+      .set('Host', A.host)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .attach('file', png, 'photo.png')
+      .expect(201);
+
+    const key: string = res.body.data.key;
+    expect(key.startsWith(`tenants/${ids['tenant-a:tenant']}/`)).toBe(true);
+    expect(key).not.toContain(ids['tenant-b:tenant']);
+    // The uploaded filename is not part of the key.
+    expect(key).not.toContain('photo');
+    expect(key.endsWith('.png')).toBe(true);
+
+    await unlink(resolve(process.env.STORAGE_LOCAL_DIR ?? './uploads', key)).catch(() => {});
+  });
+
+  /**
+   * The declared Content-Type is chosen by the uploader, so it cannot be what
+   * decides a file's type. HTML served from the store's own origin is stored
+   * XSS.
+   */
+  it('refuses an HTML file dressed up as a PNG', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/media/upload')
+      .set('Host', A.host)
+      .set('Authorization', `Bearer ${tokenA}`)
+      .attach('file', Buffer.from('<html><script>alert(1)</script></html>'), {
+        filename: 'not-really.png',
+        contentType: 'image/png',
+      })
+      .expect(400);
+  });
+
+  it('rejects an unauthenticated upload', async () => {
+    await request(app.getHttpServer())
+      .post('/api/v1/media/upload')
+      .set('Host', A.host)
+      .attach('file', Buffer.from([0xff, 0xd8, 0xff, 0xe0]), 'x.jpg')
+      .expect(401);
   });
 });

@@ -21,13 +21,13 @@ exist, logic pending · **Designed** schema and docs only · **Not started**
 | 2 | Technology choices | Built | Full stack as specified |
 | 3 | Multi-tenant architecture | **Built** | Three enforcement layers, see MULTI_TENANCY.md |
 | 4 | User roles & RBAC | **Built** | 5 roles, granular permissions, per-membership overrides |
-| 5 | Super admin | **Built** | Platform console: cross-tenant overview, store provisioning and suspension, plan management, audit log. Template management pending |
-| 6 | Tenant admin | **Built** | Every nav item resolves: dashboard, products, categories, inventory, orders, customers, coupons, shipping, notifications, reviews, appearance, analytics and settings |
+| 5 | Super admin | **Built** | Platform console: cross-tenant overview, store provisioning and suspension, plan management, template management and audit log |
+| 6 | Tenant admin | **Built** | Every nav item resolves: dashboard, products, categories, inventory, orders, customers, coupons, shipping, notifications, reviews, pages, appearance, banners, analytics and settings |
 | 7 | Store creation | **Built** | Transactional: tenant + store + theme + domain + owner |
 | 8 | White-label customization | **Built** | Runtime CSS variables, per-tenant fonts, favicon, meta, and an admin editor with sanitised custom CSS |
-| 9 | Template system | **Built** | 8 templates with distinct tokens; all five homepage sections implemented and driven by `Theme.homepageLayout`, so the editor's toggles change the live page |
+| 9 | Template system | **Built** | 8 templates with distinct tokens; all five homepage sections implemented and driven by `Theme.homepageLayout`. Super admins can add, edit and retire templates, with the same font and section allowlists the tenant editor enforces |
 | 10 | Customer storefront | **Built** | Home (configurable sections), shop/search/category browse, product detail with reviews, wishlist, cart, checkout, confirmation, sign-in, account and tenant-authored CMS pages |
-| 11 | Product management | **Built** | Backend CRUD + variants + images; admin create/edit form built. Image upload needs object storage |
+| 11 | Product management | **Built** | Backend CRUD + variants + images; admin create/edit form with drag-free image reordering and real file upload |
 | 12 | Category management | **Built** | Nested tree with cycle, depth, cross-tenant-parent and in-use guards |
 | 13 | Inventory | **Built** | Append-only ledger, signed adjustments, sale/restock paths. Oversell-safe via conditional UPDATE, not a lock |
 | 14 | Cart | **Built** | Guest (token) + customer carts, merge on sign-in, totals recomputed on every read and never stored |
@@ -39,22 +39,22 @@ exist, logic pending · **Designed** schema and docs only · **Not started**
 | 20 | Customer management | **Built** | Self-service registration, sign-in, order history and cancellation; admin list, detail with addresses and spend, and deactivation |
 | 21 | Reviews | **Built** | Verified-purchase decided from order history, moderation queue, rating recomputed on approval, storefront histogram |
 | 22 | Search | **Built** | Postgres ILIKE over name/SKU/tags backed by pg_trgm GIN indexes, plus facet counts (category, brand, price bounds, availability) and URL-driven filters |
-| 23 | Notifications | **Built** (email) | Queued before sending, outcome recorded, admin log + retry. SMS/WhatsApp channels unimplemented |
+| 23 | Notifications | **Built** | Email, SMS and WhatsApp. Queued before sending, outcome recorded, admin log and channel-aware retry. Text messages supplement the email and are sent only where a number exists and a channel is configured |
 | 24 | Email templates | **Built** | Order confirmation, status change and welcome; HTML + plain text, all values escaped |
 | 25 | Analytics | **Built** | Revenue, orders, customers, best sellers and a daily series in the store timezone; period-over-period comparison |
 | 26 | SEO | Partial | Dynamic title/meta/OG, per-tenant sitemap.xml and robots.txt, JSON-LD product/breadcrumb schema. **Client-side rendering still limits social previews — see below** |
 | 27 | Custom domains | **Built** | Add, TXT-based ownership verification, primary selection, and an on-demand-TLS authority endpoint so certificates are issued only for real stores |
 | 28 | Security | Mostly built | See breakdown below |
 | 29 | API design | **Built** | `/api/v1`, consistent envelope, Swagger |
-| 30 | Database | **Built** | All 35 entities, indexes, FKs, scoped uniques |
+| 30 | Database | **Built** | All 35 entities, indexes, FKs, scoped uniques. Every model now has a service behind it |
 | 31 | Frontend routing | **Built** | Three route trees — storefront, tenant admin, platform console — with guards and lazy loading |
-| 32 | Backend structure | **Built** | Modular; 21 of ~22 modules implemented |
+| 32 | Backend structure | **Built** | Modular; 26 feature modules, all implemented and registered |
 | 33 | Error handling | **Built** | Centralised filter, stable codes |
 | 34 | Logging | **Built** | Structured, with request/user/tenant ids, no secrets |
 | 35 | Docker | **Built** | Dev compose plus a production stack: Caddy TLS termination, one-shot migration job, no database ports published |
 | 36 | Environment variables | **Built** | Validated at boot, documented |
-| 37 | Seed data | **Built** | Two visibly different tenants, each with delivery zones, two shipping methods and a demo coupon |
-| 38 | Testing | **Built** | **Tenant isolation suite** (87 cases), 91 backend unit tests, 32 frontend including component tests, and a dependency-free load harness (`npm run test:load`). CI runs all of it against a real database |
+| 37 | Seed data | **Built** | Two visibly different tenants, each with delivery zones, two shipping methods, a demo coupon and an announcement banner |
+| 38 | Testing | **Built** | **Tenant isolation suite** (104 cases, run against a real Postgres), 117 backend unit tests, 32 frontend including component tests, and a dependency-free load harness (`npm run test:load`). CI runs all of it against a real database |
 | 39 | Documentation | **Built** | 10 documents: README, ARCHITECTURE, MULTI_TENANCY, DATABASE, SECURITY, ENVIRONMENT, STATUS, DEPLOYMENT, CUSTOM_DOMAINS, RAZORPAY. API.md is generated by Swagger |
 | 40 | Development rules | Followed | See below |
 | 41 | Development order | Phase 1 done | Phases 2–6 outstanding |
@@ -80,6 +80,9 @@ exist, logic pending · **Designed** schema and docs only · **Not started**
 | CSRF | Not needed for the bearer-token flow; **required** if the planned httpOnly cookie path for customers is used |
 | Secrets never exposed to frontend | Built |
 | Unpublished data not exposed | Built — the public product list serves ACTIVE only; drafts require `products.read` |
+| Upload validation | Built — the file's magic bytes decide its type, not the declared `Content-Type` or filename, so a `.png` that is really HTML is refused rather than served from the store's own origin. SVG is excluded on purpose |
+| Upload keys | Built — generated as `tenants/<id>/<purpose>/<month>/<uuid>.<ext>`, never derived from the uploaded filename, so traversal and cross-tenant collision are both structurally impossible |
+| Banner link sanitisation | Built — `linkUrl` becomes an `href`, so `javascript:`, `data:` and protocol-relative URLs are dropped on write, the same rule the theme's social links follow |
 
 **Not yet done and worth flagging:** no Postgres row-level security and no
 penetration test. Secret rotation and the database role split are documented in
@@ -146,6 +149,23 @@ connected instead of showing invented revenue.
    needs live keys to exercise order creation
 4. ~~**Storefront cart and checkout pages**~~ — done; a purchase completes in
    the browser
-5. **Decide the SEO approach** before building out storefront pages
-6. **Postgres RLS** as the fourth isolation layer
-7. Analytics, notifications, reviews, then the phase 6 platform features
+5. ~~**Templates, banners, uploads and text-message channels**~~ — done; every
+   schema entity now has a service and a screen behind it
+6. **Decide the SEO approach** before building out storefront pages
+7. **Postgres RLS** as the fourth isolation layer
+8. Phase 6 platform features
+
+### What is deliberately not built
+
+Each of these is a decision rather than an omission, and the reasoning is in
+this file or in [SECURITY.md](./SECURITY.md):
+
+| Gap | Why it is still open |
+|---|---|
+| SSR for the storefront | A stack decision with three viable answers, none free — see below. Picking one silently would be the wrong call to make on the project's behalf |
+| Postgres RLS | A no-op while the API connects as the schema owner, and the session-variable approach can leak across a pooled connection if done carelessly |
+| `IN_APP` notification channel | The enum value exists; nothing renders an in-app inbox, so no sender pretends to fill one |
+| SVG uploads | XML that can carry script, served from the storefront's own origin. Supporting it needs a sanitiser, which is more work than treating the format as a picture |
+| Image resizing / thumbnails | Uploads are stored as received. A large photo is served at full size, which costs bandwidth on a product grid |
+| Razorpay order creation against live keys | Signature verification is tested; the create-order call has never run against a real account |
+| Penetration test | Not attempted |

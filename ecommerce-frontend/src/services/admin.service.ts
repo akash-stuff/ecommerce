@@ -1,7 +1,9 @@
 import { apiClient, unwrap } from './api-client';
 import type {
+  AdminBanner,
   AdminOrder,
   AdminOrderRow,
+  BannerPlacement,
   Category,
   CategoryNode,
   Coupon,
@@ -80,6 +82,49 @@ export const shippingService = {
     unwrap<ShippingMethod>(apiClient.put(`/shipping/methods/${id}`, payload)),
 
   removeMethod: (id: string) => apiClient.delete(`/shipping/methods/${id}`),
+};
+
+export interface UploadedMedia {
+  key: string;
+  url: string;
+  bytes: number;
+  contentType: string;
+}
+
+export const mediaService = {
+  /**
+   * `Content-Type` is set to undefined deliberately: the browser has to write
+   * it, because only it knows the multipart boundary. The axios instance
+   * defaults to application/json, which would make the body unparseable.
+   */
+  upload: (file: File, purpose: 'product' | 'theme' | 'banner' = 'product') => {
+    const form = new FormData();
+    form.append('file', file);
+    return unwrap<UploadedMedia>(
+      apiClient.post('/media/upload', form, {
+        params: { purpose },
+        headers: { 'Content-Type': undefined },
+      }),
+    );
+  },
+};
+
+export const bannerAdminService = {
+  list: (placement?: BannerPlacement) =>
+    unwrap<AdminBanner[]>(
+      apiClient.get('/banners/admin', { params: placement ? { placement } : {} }),
+    ),
+
+  placements: () =>
+    unwrap<{ placements: BannerPlacement[] }>(apiClient.get('/banners/placements')),
+
+  create: (payload: Record<string, unknown>) =>
+    unwrap<AdminBanner>(apiClient.post('/banners', payload)),
+
+  update: (id: string, payload: Record<string, unknown>) =>
+    unwrap<AdminBanner>(apiClient.put(`/banners/${id}`, payload)),
+
+  remove: (id: string) => apiClient.delete(`/banners/${id}`),
 };
 
 export const inventoryService = {

@@ -1,7 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, Tags, ShoppingCart, Users, Boxes, Truck, Mail,
-  Ticket, Palette, BarChart3, Settings, LogOut, Star, FileText,
+  Ticket, Palette, BarChart3, Settings, LogOut, Star, FileText, Image,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { PERMISSIONS } from '@/config/permissions';
@@ -19,6 +19,7 @@ const NAV = [
   { to: '/admin/reviews', label: 'Reviews', icon: Star, permission: PERMISSIONS.REVIEWS_MODERATE },
   { to: '/admin/pages', label: 'Pages', icon: FileText, permission: PERMISSIONS.PAGES_WRITE },
   { to: '/admin/theme', label: 'Appearance', icon: Palette, permission: PERMISSIONS.THEME_UPDATE },
+  { to: '/admin/banners', label: 'Banners', icon: Image, permission: PERMISSIONS.THEME_UPDATE },
   { to: '/admin/analytics', label: 'Analytics', icon: BarChart3, permission: PERMISSIONS.ANALYTICS_READ },
   { to: '/admin/settings', label: 'Settings', icon: Settings, permission: PERMISSIONS.SETTINGS_READ },
 ];

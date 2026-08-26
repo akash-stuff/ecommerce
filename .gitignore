@@ -7,3 +7,7 @@ dist/
 *.log
 coverage/
 .DS_Store
+
+# Locally stored uploads. Real deployments use object storage; see
+# docs/DEPLOYMENT.md.
+uploads/

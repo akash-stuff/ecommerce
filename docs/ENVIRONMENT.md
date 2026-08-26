@@ -22,7 +22,29 @@ into the JavaScript bundle and is public — never put a key there.
 | `SMTP_*` | for email | Host, port, user, password, from |
 | `RAZORPAY_KEY_ID` / `KEY_SECRET` | for payments | |
 | `RAZORPAY_WEBHOOK_SECRET` | for payments | Webhook signatures are verified with this |
-| `S3_BUCKET` / `S3_REGION` / `AWS_*` | for uploads | |
+| `TWILIO_ACCOUNT_SID` / `TWILIO_AUTH_TOKEN` | for SMS/WhatsApp | Leave blank and only email is sent |
+| `TWILIO_SMS_FROM` | for SMS | E.164 sender. SMS is unconfigured without it, even with credentials |
+| `TWILIO_WHATSAPP_FROM` | for WhatsApp | Preferred over SMS when both are set |
+| `SMS_DEFAULT_COUNTRY_CODE` | no | e.g. `+91`, applied to stored numbers lacking one |
+| `S3_BUCKET` / `S3_REGION` / `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` | for object storage | All four, or S3 is treated as unconfigured |
+| `AWS_SESSION_TOKEN` | no | Only for temporary credentials from an assumed role |
+| `S3_ENDPOINT` | no | Set for MinIO / R2 / Spaces; blank means AWS |
+| `STORAGE_PUBLIC_BASE_URL` | recommended | Where stored files are fetched from. Defaults to `http://localhost:PORT` |
+| `STORAGE_LOCAL_DIR` | no | Default `./uploads`, used only when S3 is unconfigured |
+| `MAX_UPLOAD_BYTES` | no | Default `5242880` (5MB) |
+
+## Storage: which provider is used
+
+There is no driver switch. `S3_BUCKET`, `S3_REGION` and the two AWS keys being
+present is what selects S3; anything less falls back to the local disk. One
+condition, so there is no way to configure a driver that then reports itself
+unusable.
+
+Local storage is a real implementation, not a stub — same validation, same
+keys, same URLs — which is what makes the switch a configuration change. It is
+still wrong for more than one replica: files land on one container's filesystem,
+so a second replica cannot serve them and an ephemeral container loses them on
+restart. Configure S3 in production.
 
 Boot fails with a readable message if a required variable is missing or a
 secret is too short — checked by `src/config/env.validation.ts`. That is

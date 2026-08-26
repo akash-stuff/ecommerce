@@ -265,6 +265,31 @@ export interface AdminOrder extends Order {
   }[];
 }
 
+export type BannerPlacement = 'HOME_HERO' | 'SITE_ANNOUNCEMENT';
+
+/** What the storefront receives: already filtered to what should be showing. */
+export interface Banner {
+  id: string;
+  title: string | null;
+  subtitle: string | null;
+  /** Null for a text-only placement such as the announcement strip. */
+  imageUrl: string | null;
+  linkUrl: string | null;
+  placement: BannerPlacement;
+  position: number;
+}
+
+/**
+ * The admin view adds the schedule and `isLive` — computed server-side, because
+ * "active but not showing" needs the same clock the storefront query used.
+ */
+export interface AdminBanner extends Banner {
+  isActive: boolean;
+  isLive: boolean;
+  startsAt: string | null;
+  endsAt: string | null;
+}
+
 export interface Product {
   id: string;
   name: string;

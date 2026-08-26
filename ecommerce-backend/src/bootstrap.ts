@@ -14,6 +14,11 @@ export function configureApp(app: INestApplication): void {
     exclude: [
       { path: 'sitemap.xml', method: RequestMethod.GET },
       { path: 'robots.txt', method: RequestMethod.GET },
+      // Server-rendered HTML shells for shareable pages. The reverse proxy
+      // rewrites /, /product/* and /category/* onto these; see deploy/Caddyfile.
+      { path: '__ssr/home', method: RequestMethod.GET },
+      { path: '__ssr/product/:slug', method: RequestMethod.GET },
+      { path: '__ssr/category/:slug', method: RequestMethod.GET },
     ],
   });
 

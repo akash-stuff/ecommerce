@@ -271,7 +271,7 @@ export class OrdersService {
         grandTotal: order.grandTotal.toFixed(2),
         shippingAddress: address,
         paymentMethod: isCod ? 'Cash on delivery' : 'Online',
-      });
+      }, order.customerPhone);
     } catch (error) {
       this.logger.error(
         `Order ${order.orderNumber} placed but its confirmation could not be sent: ${(error as Error).message}`,
@@ -281,7 +281,12 @@ export class OrdersService {
 
   /** Tells the customer their order moved, without letting that block the move. */
   private async sendStatusEmail(
-    order: { orderNumber: string; customerEmail: string; tenantId: string },
+    order: {
+      orderNumber: string;
+      customerEmail: string;
+      tenantId: string;
+      customerPhone?: string | null;
+    },
     status: OrderStatus,
     reason?: string | null,
   ): Promise<void> {
@@ -297,7 +302,7 @@ export class OrdersService {
         customerName: order.customerEmail,
         status,
         reason: reason ?? null,
-      });
+      }, order.customerPhone);
     } catch (error) {
       this.logger.error(`Status email for ${order.orderNumber} failed: ${(error as Error).message}`);
     }

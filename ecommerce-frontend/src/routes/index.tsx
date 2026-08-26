@@ -29,6 +29,7 @@ const AdminShipping = lazy(() => import('@/pages/admin/Shipping'));
 const AdminInventory = lazy(() => import('@/pages/admin/Inventory'));
 const AdminNotifications = lazy(() => import('@/pages/admin/Notifications'));
 const AdminAppearance = lazy(() => import('@/pages/admin/Appearance'));
+const AdminBanners = lazy(() => import('@/pages/admin/Banners'));
 const AdminReviews = lazy(() => import('@/pages/admin/Reviews'));
 const AdminCustomers = lazy(() => import('@/pages/admin/Customers'));
 const AdminCustomerDetail = lazy(() => import('@/pages/admin/CustomerDetail'));
@@ -38,6 +39,7 @@ const AdminPages = lazy(() => import('@/pages/admin/Pages'));
 const PlatformOverview = lazy(() => import('@/pages/platform/Overview'));
 const PlatformTenants = lazy(() => import('@/pages/platform/Tenants'));
 const PlatformPlans = lazy(() => import('@/pages/platform/Plans'));
+const PlatformTemplates = lazy(() => import('@/pages/platform/Templates'));
 const PlatformAudit = lazy(() => import('@/pages/platform/AuditLog'));
 
 const Loading = () => <div className="p-10 text-sm text-ink-500">Loading…</div>;
@@ -98,6 +100,7 @@ export const router = createBrowserRouter([
           { path: 'inventory', element: wrap(<AdminInventory />) },
           { path: 'notifications', element: wrap(<AdminNotifications />) },
           { path: 'theme', element: wrap(<AdminAppearance />) },
+          { path: 'banners', element: wrap(<AdminBanners />) },
           { path: 'reviews', element: wrap(<AdminReviews />) },
           { path: 'customers', element: wrap(<AdminCustomers />) },
           { path: 'customers/:id', element: wrap(<AdminCustomerDetail />) },
@@ -120,6 +123,7 @@ export const router = createBrowserRouter([
           { index: true, element: wrap(<PlatformOverview />) },
           { path: 'tenants', element: wrap(<PlatformTenants />) },
           { path: 'plans', element: wrap(<PlatformPlans />) },
+          { path: 'templates', element: wrap(<PlatformTemplates />) },
           { path: 'audit', element: wrap(<PlatformAudit />) },
         ],
       },

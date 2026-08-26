@@ -7,6 +7,7 @@ import { categoryService } from '@/services/admin.service';
 import { apiClient, unwrap } from '@/services/api-client';
 import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { Field, FormError, FormGrid, Input, Select, Textarea } from '@/components/admin/Modal';
+import { ImageListUpload } from '@/components/admin/ImageListUpload';
 import type { Product } from '@/types/api';
 
 interface Draft {
@@ -24,13 +25,13 @@ interface Draft {
   shortDescription: string;
   description: string;
   weightGrams: string;
-  imageUrls: string;
+  imageUrls: string[];
 }
 
 const empty: Draft = {
   name: '', sku: '', slug: '', price: '', compareAtPrice: '', taxRate: '18',
   stock: '0', lowStockThreshold: '5', categoryId: '', status: 'DRAFT',
-  isFeatured: false, shortDescription: '', description: '', weightGrams: '', imageUrls: '',
+  isFeatured: false, shortDescription: '', description: '', weightGrams: '', imageUrls: [],
 };
 
 const num = (v: string) => (v.trim() === '' ? undefined : Number(v));
@@ -70,7 +71,7 @@ export default function ProductForm() {
       weightGrams: (p as { weightGrams?: number }).weightGrams
         ? String((p as { weightGrams?: number }).weightGrams)
         : '',
-      imageUrls: p.images.map((i) => i.url).join('\n'),
+      imageUrls: p.images.map((i) => i.url),
     });
   }, [existing.data]);
 
@@ -96,8 +97,7 @@ export default function ProductForm() {
       // validation rather than fall back.
       if (draft.slug) payload.slug = draft.slug;
 
-      const urls = draft.imageUrls.split('\n').map((u) => u.trim()).filter(Boolean);
-      if (urls.length > 0) payload.imageUrls = urls;
+      if (draft.imageUrls.length > 0) payload.imageUrls = draft.imageUrls;
 
       return isEdit ? productService.update(id!, payload) : productService.create(payload);
     },
@@ -276,14 +276,13 @@ export default function ProductForm() {
               </Field>
 
               <Field
-                label="Image URLs"
+                label="Images"
                 wide
-                hint="One per line. File upload needs object storage, which is not wired up yet."
+                hint="The first is used as the thumbnail everywhere else."
               >
-                <Textarea
-                  rows={3}
+                <ImageListUpload
                   value={draft.imageUrls}
-                  onChange={(e) => setDraft({ ...draft, imageUrls: e.target.value })}
+                  onChange={(imageUrls) => setDraft({ ...draft, imageUrls })}
                 />
               </Field>
             </FormGrid>

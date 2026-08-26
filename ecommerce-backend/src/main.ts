@@ -7,6 +7,8 @@ import cookieParser from 'cookie-parser';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
 import { configureApp } from './bootstrap';
+import { MediaService } from './media/media.service';
+import { LocalStorageProvider } from './media/providers/local.provider';
 
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
@@ -62,6 +64,29 @@ async function bootstrap(): Promise<void> {
       transformOptions: { enableImplicitConversion: false },
     }),
   );
+
+  /**
+   * Serve uploaded files only when the disk is actually the store.
+   *
+   * With S3 configured the objects live there and are fetched from the bucket
+   * or its CDN, so exposing a local directory would serve nothing but stale
+   * files from whichever replica happened to write them. Registered outside the
+   * API prefix because these are assets, not endpoints.
+   */
+  const media = app.get(MediaService);
+  if (media.provider() instanceof LocalStorageProvider) {
+    const uploads = app.get(LocalStorageProvider).root;
+    app.useStaticAssets(uploads, {
+      prefix: '/uploads/',
+      // Immutable: keys contain a UUID, so a given URL's bytes never change.
+      maxAge: '365d',
+      immutable: true,
+      index: false,
+      // No directory listing, and no serving anything the key does not name.
+      dotfiles: 'deny',
+    });
+    logger.log(`Serving uploads from ${uploads} at /uploads`);
+  }
 
   if (config.get('env') !== 'production') {
     const doc = new DocumentBuilder()

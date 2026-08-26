@@ -53,7 +53,7 @@ export class ShipmentsService {
       where: { id: orderId },
       select: {
         id: true, orderNumber: true, status: true, customerEmail: true,
-        tenantId: true, shippingMethodId: true,
+        customerPhone: true, tenantId: true, shippingMethodId: true,
       },
     });
 
@@ -162,7 +162,12 @@ export class ShipmentsService {
 
   /** Best effort — a parcel that went out must not be un-shipped by a mail failure. */
   private async notifyShipped(
-    order: { orderNumber: string; customerEmail: string; tenantId: string },
+    order: {
+      orderNumber: string;
+      customerEmail: string;
+      tenantId: string;
+      customerPhone?: string | null;
+    },
     trackingNumber: string | null,
     trackingUrl: string | null,
   ): Promise<void> {
@@ -180,7 +185,7 @@ export class ShipmentsService {
         reason: trackingNumber
           ? `Tracking: ${trackingNumber}${trackingUrl ? ` — ${trackingUrl}` : ''}`
           : null,
-      });
+      }, order.customerPhone);
     } catch {
       // Logged by the notifications service; never fatal here.
     }

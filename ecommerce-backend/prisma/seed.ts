@@ -131,6 +131,7 @@ Seed complete.
   Voltway       owner@voltway.localhost   / OwnerPass123!   http://voltway.${PLATFORM_DOMAIN}:5173
   Demo customer shopper@example.com       / Shopper123!     (exists separately in each store)
   Demo coupon   WELCOME10                 10% off over 1000, capped at 700
+  Demo banner   Announcement strip        text only; add a hero image from Admin > Banners
 `);
 }
 
@@ -305,6 +306,25 @@ async function seedTenant(spec: TenantSpec): Promise<void> {
         minOrderAmount: 1000,
         maxDiscountAmount: 700,
         usageLimit: 100,
+      },
+    });
+
+    /**
+     * A text-only announcement, and no hero image.
+     *
+     * The strip needs no artwork, so it demonstrates the feature without this
+     * script inventing an image URL — a seeded hero pointing at a stock photo
+     * on someone else's CDN is a broken image the first time that link rots,
+     * and rule 5 says demo data does not get hard-coded into the product.
+     */
+    await tx.banner.create({
+      data: {
+        tenantId: tenant.id,
+        placement: 'SITE_ANNOUNCEMENT',
+        title: 'Free delivery on orders over ₹1,000',
+        subtitle: 'Use WELCOME10 for 10% off your first order',
+        linkUrl: '/shop',
+        position: 0,
       },
     });
   });

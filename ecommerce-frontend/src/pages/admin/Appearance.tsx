@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, unwrap } from '@/services/api-client';
 import { Page, PrimaryButton } from '@/components/admin/Page';
 import { Field, FormError, FormGrid, Input, Select, Textarea } from '@/components/admin/Modal';
+import { ImageUpload } from '@/components/admin/ImageUpload';
 import type { EditableTheme } from '@/types/api';
 
 const SECTION_LABELS: Record<string, string> = {
@@ -156,25 +157,28 @@ export default function Appearance() {
           </Card>
 
           <Card title="Logo and icon">
-            <FormGrid>
-              <Field label="Logo URL" hint="Shown in the header instead of the store name" wide>
-                <Input
-                  value={draft.logoUrl}
-                  placeholder="https://…"
-                  onChange={(e) => set('logoUrl', e.target.value)}
-                />
+            <div className="grid gap-5 sm:grid-cols-2">
+              <Field label="Logo" hint="Shown in the header instead of the store name">
+                <div className="mt-1.5">
+                  <ImageUpload
+                    label="Logo"
+                    purpose="theme"
+                    value={draft.logoUrl}
+                    onChange={(url) => set('logoUrl', url)}
+                  />
+                </div>
               </Field>
-              <Field label="Favicon URL" wide>
-                <Input
-                  value={draft.faviconUrl}
-                  placeholder="https://…"
-                  onChange={(e) => set('faviconUrl', e.target.value)}
-                />
+              <Field label="Favicon" hint="The small icon in a browser tab">
+                <div className="mt-1.5">
+                  <ImageUpload
+                    label="Favicon"
+                    purpose="theme"
+                    value={draft.faviconUrl}
+                    onChange={(url) => set('faviconUrl', url)}
+                  />
+                </div>
               </Field>
-            </FormGrid>
-            <p className="mt-3 text-xs text-ink-500">
-              Paste a URL for now — file upload needs object storage, which is not wired up yet.
-            </p>
+            </div>
           </Card>
 
           <Card title="Social links">

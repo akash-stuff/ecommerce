@@ -906,12 +906,16 @@ model Page {
   @@map("pages")
 }
 
+/// Promotional slots on a storefront. `placement` decides where it renders and
+/// what it needs: the homepage hero is an image, the announcement strip is a
+/// line of text, so `imageUrl` is optional and the service requires it per
+/// placement rather than the column doing it for every case.
 model Banner {
   id        String    @id @default(uuid())
   tenantId  String
   title     String?
   subtitle  String?
-  imageUrl  String
+  imageUrl  String?
   linkUrl   String?
   position  Int       @default(0)
   placement String    @default("HOME_HERO")

@@ -48,6 +48,24 @@
 		reverse_proxy backend:4000
 	}
 
+	# The three pages people paste into a chat window are served by the API so
+	# their <head> carries real Open Graph tags. Social scrapers read the first
+	# response and never run JavaScript, so a client-rendered shell previews as
+	# a blank card. React still hydrates the same empty body afterwards.
+	@shareable path / /product/* /category/*
+	handle @shareable {
+		# Only HTML navigations; an asset or fetch under these paths is not a
+		# page view and must keep going to the frontend.
+		@html header Accept *text/html*
+		handle @html {
+			rewrite / /__ssr/home
+			rewrite /product/* /__ssr{uri}
+			rewrite /category/* /__ssr{uri}
+			reverse_proxy backend:4000
+		}
+		reverse_proxy frontend:80
+	}
+
 	handle {
 		reverse_proxy frontend:80
 	}
@@ -88,6 +106,24 @@
 
 	handle /robots.txt {
 		reverse_proxy backend:4000
+	}
+
+	# The three pages people paste into a chat window are served by the API so
+	# their <head> carries real Open Graph tags. Social scrapers read the first
+	# response and never run JavaScript, so a client-rendered shell previews as
+	# a blank card. React still hydrates the same empty body afterwards.
+	@shareable path / /product/* /category/*
+	handle @shareable {
+		# Only HTML navigations; an asset or fetch under these paths is not a
+		# page view and must keep going to the frontend.
+		@html header Accept *text/html*
+		handle @html {
+			rewrite / /__ssr/home
+			rewrite /product/* /__ssr{uri}
+			rewrite /category/* /__ssr{uri}
+			reverse_proxy backend:4000
+		}
+		reverse_proxy frontend:80
 	}
 
 	handle {

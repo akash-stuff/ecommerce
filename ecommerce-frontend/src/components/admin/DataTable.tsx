@@ -145,6 +145,7 @@ export function StatusBadge({ value }: { value: string }) {
     cancelled: 'bg-red-50 text-red-700',
     refunded: 'bg-red-50 text-red-700',
     archived: 'bg-ink-100 text-ink-500',
+    retired: 'bg-ink-100 text-ink-500',
     draft: 'bg-ink-100 text-ink-500',
   };
 

@@ -28,8 +28,11 @@ import { CustomersModule } from './customers/customers.module';
 import { SeoModule } from './seo/seo.module';
 import { AuditModule } from './audit/audit.module';
 import { PlansModule } from './plans/plans.module';
+import { TemplatesModule } from './templates/templates.module';
 import { WishlistModule } from './wishlist/wishlist.module';
 import { PagesModule } from './pages/pages.module';
+import { BannersModule } from './banners/banners.module';
+import { MediaModule } from './media/media.module';
 import { HealthModule } from './health/health.module';
 
 import { RequestContextMiddleware } from './common/middleware/request-context.middleware';
@@ -61,8 +64,11 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     NotificationsModule,
     AuditModule,
     PlansModule,
+    TemplatesModule,
     WishlistModule,
     PagesModule,
+    BannersModule,
+    MediaModule,
     TenantsModule,
     AuthModule,
     ProductsModule,

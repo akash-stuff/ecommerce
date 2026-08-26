@@ -1,7 +1,8 @@
-import { Controller, Get, Header, Req } from '@nestjs/common';
+import { Controller, Get, Header, Param, Req } from '@nestjs/common';
 import { ApiExcludeController } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { SeoService } from './seo.service';
+import { SsrService } from './ssr.service';
 import { Public, SkipResponseWrap } from '../common/decorators';
 
 /**
@@ -15,7 +16,10 @@ import { Public, SkipResponseWrap } from '../common/decorators';
 @ApiExcludeController()
 @Controller()
 export class SeoController {
-  constructor(private readonly seo: SeoService) {}
+  constructor(
+    private readonly seo: SeoService,
+    private readonly ssr: SsrService,
+  ) {}
 
   @Public()
   @SkipResponseWrap()
@@ -33,6 +37,45 @@ export class SeoController {
   @Header('Cache-Control', 'public, max-age=86400')
   robots(@Req() req: Request) {
     return this.seo.robots(origin(req));
+  }
+}
+
+/**
+ * The HTML shell, with real meta tags, for the pages people share.
+ *
+ * Only three routes are handled: the storefront home, a product and a category.
+ * Those are what get pasted into a chat window. Everything else is served by
+ * the static frontend as before — a catch-all here would have to out-rank the
+ * API routes, and getting that ordering wrong breaks the whole application
+ * rather than one preview card.
+ */
+@ApiExcludeController()
+@Controller()
+export class StorefrontHtmlController {
+  constructor(private readonly ssr: SsrService) {}
+
+  @Public()
+  @SkipResponseWrap()
+  @Get('__ssr/home')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  home(@Req() req: Request) {
+    return this.ssr.renderStore(origin(req));
+  }
+
+  @Public()
+  @SkipResponseWrap()
+  @Get('__ssr/product/:slug')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  product(@Req() req: Request, @Param('slug') slug: string) {
+    return this.ssr.renderProduct(origin(req), slug);
+  }
+
+  @Public()
+  @SkipResponseWrap()
+  @Get('__ssr/category/:slug')
+  @Header('Content-Type', 'text/html; charset=utf-8')
+  category(@Req() req: Request, @Param('slug') slug: string) {
+    return this.ssr.renderCategory(origin(req), slug);
   }
 }
 

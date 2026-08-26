@@ -31,6 +31,33 @@ export interface PlatformPlan {
   _count: { subscriptions: number };
 }
 
+export interface TemplateTheme {
+  primaryColor?: string;
+  secondaryColor?: string;
+  accentColor?: string;
+  bodyFont?: string;
+  headingFont?: string;
+}
+
+export interface PlatformTemplate {
+  id: string;
+  name: string;
+  slug: string;
+  category: string;
+  description: string | null;
+  previewImage: string | null;
+  defaultTheme: TemplateTheme;
+  layoutConfig: { sections?: string[] };
+  isActive: boolean;
+  _count: { stores: number };
+}
+
+/** The gallery shape: active templates only, without the store counts. */
+export type TemplateChoice = Pick<
+  PlatformTemplate,
+  'id' | 'name' | 'slug' | 'category' | 'description' | 'previewImage' | 'defaultTheme'
+>;
+
 export interface PlatformOverview {
   range: { days: number };
   tenants: {
@@ -107,6 +134,24 @@ export const platformService = {
     unwrap<PlatformPlan>(apiClient.put(`/platform/plans/${id}`, payload)),
 
   retirePlan: (id: string) => unwrap<PlatformPlan>(apiClient.delete(`/platform/plans/${id}`)),
+
+  templates: () => unwrap<PlatformTemplate[]>(apiClient.get('/platform/templates')),
+
+  /** Active templates only — what a new store may actually be built from. */
+  templateGallery: () => unwrap<TemplateChoice[]>(apiClient.get('/platform/templates/gallery')),
+
+  templateOptions: () =>
+    unwrap<{ fonts: string[]; sections: string[] }>(
+      apiClient.get('/platform/templates/options'),
+    ),
+
+  createTemplate: (payload: Record<string, unknown>) =>
+    unwrap<PlatformTemplate>(apiClient.post('/platform/templates', payload)),
+
+  updateTemplate: (id: string, payload: Record<string, unknown>) =>
+    unwrap<PlatformTemplate>(apiClient.put(`/platform/templates/${id}`, payload)),
+
+  deleteTemplate: (id: string) => unwrap<void>(apiClient.delete(`/platform/templates/${id}`)),
 
   audit: (params: { page?: number; limit?: number; action?: string; tenantId?: string }) =>
     paged<AuditRow>(apiClient.get('/platform/audit', { params })),

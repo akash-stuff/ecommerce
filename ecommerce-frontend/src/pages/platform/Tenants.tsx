@@ -20,6 +20,7 @@ interface NewTenant {
   ownerFirstName: string;
   ownerPassword: string;
   planId: string;
+  templateId: string;
 }
 
 const blank: NewTenant = {
@@ -31,6 +32,7 @@ const blank: NewTenant = {
   ownerFirstName: '',
   ownerPassword: '',
   planId: '',
+  templateId: '',
 };
 
 export default function Tenants() {
@@ -58,6 +60,12 @@ export default function Tenants() {
 
   const plans = useQuery({ queryKey: ['platform-plans'], queryFn: platformService.plans });
 
+  // The gallery, not the full list: a retired template must not be offered.
+  const templates = useQuery({
+    queryKey: ['platform-template-gallery'],
+    queryFn: platformService.templateGallery,
+  });
+
   const refresh = () => {
     queryClient.invalidateQueries({ queryKey: ['platform-tenants'] });
     queryClient.invalidateQueries({ queryKey: ['platform-overview'] });
@@ -74,6 +82,7 @@ export default function Tenants() {
         ownerPassword: t.ownerPassword,
         ownerFirstName: t.ownerFirstName,
         planId: t.planId || undefined,
+        templateId: t.templateId || undefined,
       }),
     onSuccess: () => {
       setCreating(null);
@@ -309,6 +318,25 @@ export default function Tenants() {
                       {p.name}
                     </option>
                   ))}
+              </Select>
+            </Field>
+
+            <Field
+              label="Template"
+              hint="Sets the starting colours, fonts and homepage sections"
+            >
+              <Select
+                value={creating.templateId}
+                onChange={(e) => setCreating({ ...creating, templateId: e.target.value })}
+              >
+                {/* Blank is not "no template": the API falls back to the general
+                    store so a new storefront is never left without a theme. */}
+                <option value="">General store (default)</option>
+                {(templates.data ?? []).map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name} — {t.category}
+                  </option>
+                ))}
               </Select>
             </Field>
           </FormGrid>

@@ -1,5 +1,5 @@
 import { apiClient, unwrap } from './api-client';
-import type { Product, StoreConfig } from '@/types/api';
+import type { Banner, BannerPlacement, Product, StoreConfig } from '@/types/api';
 
 /**
  * The storefront's first call. Returns branding, template and metadata for
@@ -7,6 +7,12 @@ import type { Product, StoreConfig } from '@/types/api';
  */
 export const storeService = {
   getConfig: () => unwrap<StoreConfig>(apiClient.get('/store')),
+};
+
+export const bannerService = {
+  /** Scheduling is applied server-side, so whatever comes back is showable. */
+  live: (placement?: BannerPlacement) =>
+    unwrap<Banner[]>(apiClient.get('/banners', { params: placement ? { placement } : {} })),
 };
 
 export const productService = {

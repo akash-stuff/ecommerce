@@ -340,10 +340,16 @@ In rough order of when each starts to hurt:
 
 1. **Managed Postgres** — moving the database off the box gets you automated
    backups, point-in-time recovery and failover. Do this first.
-2. **Object storage** for product images. Images are currently URLs typed into
-   the admin; wiring up S3 replaces that.
-3. **Multiple API replicas** — the API is stateless, so `deploy: replicas: 3`
-   and Caddy load-balances. Sessions live in Postgres and Redis, not in memory.
+2. **Object storage** for uploaded images. Set `S3_BUCKET`, `S3_REGION` and the
+   two AWS keys and uploads go to S3 instead of the container's disk; nothing
+   else changes. **Do this before step 3, not after** — with local storage each
+   replica can only serve the files it happened to receive, so adding replicas
+   turns working images into intermittent 404s. Files already on disk need
+   copying into the bucket under the same keys; the URLs stored against
+   products and themes are absolute and will otherwise point at the old host.
+3. **Multiple API replicas** — the API is stateless *once storage is external*,
+   so `deploy: replicas: 3` and Caddy load-balances. Sessions live in Postgres
+   and Redis, not in memory.
 4. **Postgres read replicas** and a CDN in front of Caddy.
 
 The one thing that does not scale by adding servers is a slow query on a large

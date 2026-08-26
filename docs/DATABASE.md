@@ -171,6 +171,35 @@ Three deliberate exceptions:
 - **`AuditLog.tenantId` is `SetNull`**, so deleting a store does not erase the
   record of who deleted it.
 - **`Coupon` is deactivated, never deleted**, because past orders reference it.
+- **`Template` is retired, not deleted**, once a store has been built from it.
+  Deletion is refused while `stores.templateId` points at it — see below.
+
+`Banner` is the exception that is genuinely deleted: it references nothing and
+nothing references it, so a removed promotion leaves no dangling row.
+
+---
+
+## Templates are copied, not referenced
+
+`Store.templateId` looks like a live dependency and is not one. A template's
+`defaultTheme` and `layoutConfig` are **copied into the tenant's `Theme` row**
+when the store is provisioned; afterwards the storefront reads only the `Theme`.
+The foreign key survives so the console can say which template a store started
+from.
+
+Two consequences worth knowing before changing anything here:
+
+- Editing a template does **not** restyle existing storefronts. That is the
+  point — pushing an edit into live stores would overwrite branding a tenant
+  chose, which is the opposite of what a white-label platform promises.
+- Retiring a template is therefore safe: it leaves the gallery and no storefront
+  notices. Deleting one is refused only because of the foreign key, and the API
+  says so rather than surfacing a constraint error.
+
+`Banner.imageUrl` is nullable for a related reason: `placement` decides what a
+banner needs. A homepage hero is its image; the announcement strip is its text.
+The requirement lives in `BannersService` per placement rather than as a
+`NOT NULL` that would force artwork onto a line of copy.
 
 ---
 
