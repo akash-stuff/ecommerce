@@ -1,31 +1,13 @@
-# Production stack. Differs from docker-compose.yml in four ways that matter:
-#
-#   1. Caddy terminates TLS and is the only thing exposed to the internet.
-#   2. Postgres and Redis publish no ports — they are reachable only on the
-#      internal network, so a misconfigured firewall cannot expose the database.
-#   3. Every secret comes from the environment; nothing is defaulted.
-#   4. Migrations run as a one-shot job before the API starts, rather than on
-#      every boot of every replica.
-#
-# Usage:  docker compose -f docker-compose.prod.yml --env-file .env.production up -d
-# See docs/DEPLOYMENT.md.
-
 services:
   caddy:
     image: caddy:2-alpine
     restart: unless-stopped
     ports:
-      - '80:80'
-      - '443:443'
+      - '127.0.0.1:8080:80'
     volumes:
       - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data # certificates live here — back this up
+      - caddy_data:/data
       - caddy_config:/config
-    environment:
-      ACME_EMAIL: ${ACME_EMAIL:?set ACME_EMAIL}
-      PLATFORM_DOMAIN: ${PLATFORM_DOMAIN:?set PLATFORM_DOMAIN}
-      DNS_PROVIDER: ${DNS_PROVIDER:?set DNS_PROVIDER}
-      DNS_API_TOKEN: ${DNS_API_TOKEN:?set DNS_API_TOKEN}
     depends_on:
       - backend
       - frontend
@@ -37,10 +19,7 @@ services:
     command: npx prisma migrate deploy
     environment:
       DATABASE_URL: ${DATABASE_URL:?set DATABASE_URL}
-    depends_on:
-      postgres:
-        condition: service_healthy
-    restart: 'no' # a one-shot job, not a service
+    restart: 'no'
     networks: [internal]
 
   backend:
@@ -65,13 +44,8 @@ services:
       SMTP_USER: ${SMTP_USER}
       SMTP_PASSWORD: ${SMTP_PASSWORD}
       SMTP_FROM: ${SMTP_FROM}
-      # Payment credentials are per store, entered by each tenant in
-      # Admin > Payments and encrypted with this key. There are no
-      # platform-wide gateway keys.
       CREDENTIALS_ENCRYPTION_KEY: ${CREDENTIALS_ENCRYPTION_KEY:?required}
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_started
       migrate:
@@ -88,28 +62,10 @@ services:
     build:
       context: ./ecommerce-frontend
       args:
-        # {host} is replaced in the browser, so one build serves every tenant
-        # and every request lands on the hostname the visitor actually used.
         VITE_API_URL: https://{host}/api/v1
         VITE_STORE_DOMAIN: ${PLATFORM_DOMAIN}
     restart: unless-stopped
     networks: [internal]
-
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${POSTGRES_USER:?set POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB:-ecommerce}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER}']
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    networks: [internal] # no ports: not reachable from outside the host
 
   redis:
     image: redis:7-alpine
@@ -120,15 +76,10 @@ services:
     networks: [internal]
 
 volumes:
-  postgres_data:
   redis_data:
   caddy_data:
   caddy_config:
 
 networks:
   edge:
-  # A normal bridge network, deliberately NOT `internal: true`. The API needs
-  # outbound access for SMTP, the Razorpay API and the DNS lookups that verify
-  # custom domains. What keeps Postgres and Redis private is that they publish
-  # no ports — nothing on the host or the internet can reach them directly.
   internal:
