@@ -9,6 +9,7 @@ import {
 import { Card, DangerButton, Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { Field, FormError, Input, Modal } from '@/components/admin/Modal';
 import { env } from '@/config/env';
+import { toast, toastFromError } from '@/components/Toasts';
 
 const PROVIDER_COPY: Record<string, { title: string; blurb: string; icon: typeof CreditCard }> = {
   COD: {
@@ -38,9 +39,15 @@ export default function Payments() {
   };
 
   const toggle = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: ({ provider, isEnabled }: { provider: string; isEnabled: boolean }) =>
       paymentGatewayService.save(provider, { isEnabled }),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      toast.saved('Payment method updated');
+      invalidate();
+    },
   });
 
   const enabled = (gateways.data ?? []).filter((g) => g.ready);
@@ -213,6 +220,9 @@ function CredentialsModal({
   const [confirmDisconnect, setConfirmDisconnect] = useState(false);
 
   const save = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: () =>
       paymentGatewayService.save(gateway.provider, {
         publicKey,
@@ -221,12 +231,21 @@ function CredentialsModal({
         // its stored value instead of being cleared.
         secrets: Object.fromEntries(Object.entries(secrets).filter(([, v]) => v !== '')),
       }),
-    onSuccess: onSaved,
+    onSuccess: () => {
+      toast.saved('Payment keys saved');
+      onSaved();
+    },
   });
 
   const disconnect = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: () => paymentGatewayService.disconnect(gateway.provider),
-    onSuccess: onSaved,
+    onSuccess: () => {
+      toast.saved('Payment method disconnected');
+      onSaved();
+    },
   });
 
   const title = PROVIDER_COPY[gateway.provider]?.title ?? gateway.provider;
@@ -407,13 +426,24 @@ function Toggle({
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors disabled:opacity-40 ${
+      className={`relative h-6 w-11 shrink-0 rounded-full transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ink-950 focus-visible:ring-offset-2 disabled:opacity-40 ${
         checked ? 'bg-ink-950' : 'bg-ink-200'
       }`}
     >
+      {/*
+        `left` is set explicitly rather than left to `auto`.
+        A button is `text-align: center` by default, and an absolutely
+        positioned child contributes nothing to the line box — so `auto` resolved
+        to the centre of the empty line, 22px, and the knob sat flush against the
+        right edge while the switch was off. An off switch looked on, and the on
+        state pushed the knob clear outside the track.
+
+        Both offsets are 2px, so the knob is inset evenly: 20px knob travelling
+        20px across a 44px track.
+      */}
       <span
-        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-card transition-transform ${
-          checked ? 'translate-x-[1.375rem]' : 'translate-x-0.5'
+        className={`absolute left-0.5 top-0.5 h-5 w-5 rounded-full bg-white shadow-card transition-transform ${
+          checked ? 'translate-x-5' : 'translate-x-0'
         }`}
       />
     </button>

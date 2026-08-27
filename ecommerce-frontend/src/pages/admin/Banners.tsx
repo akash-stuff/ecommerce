@@ -7,6 +7,7 @@ import { Field, FormError, FormGrid, Input, Modal, Select } from '@/components/a
 import { ImageUpload } from '@/components/admin/ImageUpload';
 import { formatDate } from '@/utils/format';
 import type { AdminBanner, BannerPlacement } from '@/types/api';
+import { toast, toastFromError } from '@/components/Toasts';
 
 const PLACEMENT_LABELS: Record<BannerPlacement, string> = {
   HOME_HERO: 'Homepage hero',
@@ -66,6 +67,9 @@ export default function Banners() {
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['admin-banners'] });
 
   const save = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (d: Draft) => {
       const payload = {
         title: d.title || undefined,
@@ -83,12 +87,16 @@ export default function Banners() {
         : bannerAdminService.create(payload);
     },
     onSuccess: () => {
+      toast.saved('Banner saved');
       refresh();
       setDraft(null);
     },
   });
 
   const remove = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (id: string) => bannerAdminService.remove(id),
     onSuccess: refresh,
   });

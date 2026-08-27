@@ -2,9 +2,10 @@ import { Controller, Get, HttpCode, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { MailerService } from './mailer.service';
-import { RequirePermissions } from '../common/decorators';
+import { PlatformOnly, RequirePermissions, TenantOptional } from '../common/decorators';
 import { PERMISSIONS } from '../common/rbac/permissions';
 import { PaginationQueryDto } from '../common/dto/pagination.dto';
+import { PlatformNotificationQueryDto } from './dto/notification.dto';
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
@@ -44,5 +45,29 @@ export class NotificationsController {
   @ApiOperation({ summary: 'Retry queued and failed messages' })
   retry() {
     return this.notifications.retryPending();
+  }
+}
+
+/**
+ * Every store's messages, for the platform operator.
+ *
+ * Its own controller rather than a flag on the tenant one. The tenant route is
+ * scoped by `requireTenantId()` and must stay that way; putting a "show
+ * everything" mode behind the same path would make the isolation a matter of
+ * which parameters happened to be sent.
+ */
+@ApiTags('Notifications')
+@ApiBearerAuth()
+@Controller('platform/notifications')
+export class PlatformNotificationsController {
+  constructor(private readonly notifications: NotificationsService) {}
+
+  @Get()
+  @PlatformOnly()
+  @TenantOptional()
+  @RequirePermissions(PERMISSIONS.PLATFORM_ANALYTICS_READ)
+  @ApiOperation({ summary: "Messages across every store, with the store named" })
+  findAll(@Query() query: PlatformNotificationQueryDto) {
+    return this.notifications.findAllAcrossPlatform(query);
   }
 }

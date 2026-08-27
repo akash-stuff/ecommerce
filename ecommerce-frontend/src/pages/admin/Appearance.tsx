@@ -9,6 +9,7 @@ import { ImageUpload } from '@/components/admin/ImageUpload';
 import { SECTION_LABELS, TemplatePreview } from '@/components/admin/TemplatePreview';
 import { BACKGROUND_LABELS, surfaceFor } from '@/features/theme/backgrounds';
 import type { EditableTheme } from '@/types/api';
+import { toast, toastFromError } from '@/components/Toasts';
 
 interface Draft {
   primaryColor: string;
@@ -22,6 +23,8 @@ interface Draft {
   background: string;
   backgroundImageUrl: string;
   backgroundFit: string;
+  loginImageUrl: string;
+  loginMessage: string;
   instagram: string;
   facebook: string;
   homepageLayout: string[];
@@ -64,6 +67,8 @@ export default function Appearance() {
       background: t.background ?? 'plain',
       backgroundImageUrl: t.backgroundImageUrl ?? '',
       backgroundFit: t.backgroundFit ?? 'cover',
+      loginImageUrl: t.loginImageUrl ?? '',
+      loginMessage: t.loginMessage ?? '',
       instagram: t.socialLinks?.instagram ?? '',
       facebook: t.socialLinks?.facebook ?? '',
       homepageLayout: t.homepageLayout ?? [],
@@ -72,6 +77,9 @@ export default function Appearance() {
   }, [theme.data]);
 
   const save = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (d: Draft) =>
       unwrap(
         apiClient.put('/theme', {
@@ -80,19 +88,31 @@ export default function Appearance() {
           accentColor: d.accentColor,
           bodyFont: d.bodyFont,
           headingFont: d.headingFont,
-          logoUrl: d.logoUrl || undefined,
-          faviconUrl: d.faviconUrl || undefined,
+          /**
+           * Sent raw, including as an empty string.
+           *
+           * `|| undefined` omitted the field, and the API treats an absent
+           * field as "not editing this" — so removing a logo saved without
+           * complaint and changed nothing. Empty now means remove.
+           */
+          logoUrl: d.logoUrl,
+          faviconUrl: d.faviconUrl,
           logoSize: d.logoSize,
           background: d.background,
           // Empty clears it; the API distinguishes that from an absent field.
           backgroundImageUrl: d.backgroundImageUrl,
           backgroundFit: d.backgroundFit,
+          loginImageUrl: d.loginImageUrl,
+          loginMessage: d.loginMessage,
           socialLinks: { instagram: d.instagram, facebook: d.facebook },
           homepageLayout: d.homepageLayout,
           customCss: d.customCss,
         }),
       ),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-theme'] }),
+    onSuccess: () => {
+      toast.saved('Appearance saved');
+      queryClient.invalidateQueries({ queryKey: ['admin-theme'] });
+    },
   });
 
   if (theme.isLoading || !draft) {
@@ -254,7 +274,7 @@ export default function Appearance() {
 
           <Card
             title="Background"
-            description="Drawn in your own colours, so it looks like your store rather than the platform"
+            description="Optional. Pick a preset drawn in your own colours, or upload your own image — a store that changes nothing here gets a clean white page."
           >
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               {(options.data?.backgrounds ?? []).map((preset) => (
@@ -275,10 +295,13 @@ export default function Appearance() {
             </div>
 
             <div className="mt-6 border-t border-ink-100 pt-5">
-              <p className="text-sm font-medium text-ink-700">Or use your own image</p>
+              <p className="text-sm font-medium text-ink-700">
+                Or use your own image{' '}
+                <span className="font-normal text-ink-400">— optional</span>
+              </p>
               <p className="mb-2 mt-0.5 text-xs text-ink-500">
-                Overrides the preset above. A photograph wants Fill; a seamless texture wants
-                Tile.
+                Leave this empty to keep the preset above. If you do add one it takes over: a
+                photograph wants Fill, a seamless texture wants Tile.
               </p>
               <ImageUpload
                 label="background"
@@ -306,6 +329,48 @@ export default function Appearance() {
                   ))}
                 </div>
               )}
+            </div>
+          </Card>
+
+          <Card
+            title="Shopper sign-in page"
+            description="Optional. What a customer sees when they sign in or create an account."
+          >
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div>
+                <p className="text-sm font-medium text-ink-700">
+                  Image <span className="font-normal text-ink-400">— optional</span>
+                </p>
+                <p className="mb-2 mt-0.5 text-xs text-ink-500">
+                  Shown beside the form on a wide screen. Leave it empty and the form centres on
+                  its own.
+                </p>
+                <ImageUpload
+                  label="sign-in image"
+                  purpose="theme"
+                  aspect="wide"
+                  value={draft.loginImageUrl}
+                  onChange={(url) => set('loginImageUrl', url)}
+                />
+              </div>
+
+              <div>
+                <Field
+                  label="Message"
+                  hint={`${draft.loginMessage.length}/160 · shown over the image, or under the form when there is none`}
+                >
+                  <Textarea
+                    rows={3}
+                    maxLength={160}
+                    value={draft.loginMessage}
+                    placeholder="Free delivery on your first order."
+                    onChange={(e) => set('loginMessage', e.target.value)}
+                  />
+                </Field>
+                <p className="mt-2 text-xs text-ink-500">
+                  Plain text — it is rendered as words, never as markup.
+                </p>
+              </div>
             </div>
           </Card>
 
@@ -406,11 +471,7 @@ export default function Appearance() {
             <PrimaryButton disabled={save.isPending} onClick={() => save.mutate(draft)}>
               {save.isPending ? 'Saving…' : 'Save changes'}
             </PrimaryButton>
-            {save.isSuccess && (
-              <span className="flex items-center gap-1 text-sm text-green-700">
-                <Check size={14} /> Saved
-              </span>
-            )}
+
           </div>
         </div>
 

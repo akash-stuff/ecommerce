@@ -3,6 +3,7 @@ import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { RequireAuth } from './guards';
 import { ThemeProvider } from '@/features/theme/ThemeProvider';
 import { StorefrontLayout } from '@/layouts/StorefrontLayout';
+import { StorefrontAuthLayout } from '@/layouts/StorefrontAuthLayout';
 import { AdminLayout } from '@/layouts/AdminLayout';
 import { PlatformLayout } from '@/layouts/PlatformLayout';
 
@@ -30,6 +31,7 @@ const AdminInventory = lazy(() => import('@/pages/admin/Inventory'));
 const AdminNotifications = lazy(() => import('@/pages/admin/Notifications'));
 const AdminAppearance = lazy(() => import('@/pages/admin/Appearance'));
 const AdminBanners = lazy(() => import('@/pages/admin/Banners'));
+const AdminSubscribers = lazy(() => import('@/pages/admin/Subscribers'));
 const AdminReviews = lazy(() => import('@/pages/admin/Reviews'));
 const AdminCustomers = lazy(() => import('@/pages/admin/Customers'));
 const AdminCustomerDetail = lazy(() => import('@/pages/admin/CustomerDetail'));
@@ -42,6 +44,7 @@ const PlatformTenants = lazy(() => import('@/pages/platform/Tenants'));
 const PlatformPlans = lazy(() => import('@/pages/platform/Plans'));
 const PlatformTemplates = lazy(() => import('@/pages/platform/Templates'));
 const PlatformAudit = lazy(() => import('@/pages/platform/AuditLog'));
+const PlatformNotifications = lazy(() => import('@/pages/platform/Notifications'));
 
 const Loading = () => <div className="p-10 text-sm text-ink-500">Loading…</div>;
 const wrap = (el: JSX.Element) => <Suspense fallback={<Loading />}>{el}</Suspense>;
@@ -69,7 +72,6 @@ export const router = createBrowserRouter([
       { path: 'shop', element: wrap(<Shop />) },
       { path: 'search', element: wrap(<Shop />) },
       { path: 'category/:slug', element: wrap(<CategoryPage />) },
-      { path: 'account/sign-in', element: wrap(<SignIn />) },
       { path: 'account', element: wrap(<Account />) },
       { path: 'wishlist', element: wrap(<Wishlist />) },
       { path: 'cart', element: wrap(<Cart />) },
@@ -80,6 +82,22 @@ export const router = createBrowserRouter([
       // API refuses reserved slugs for the same reason.
       { path: ':slug', element: wrap(<CmsPage />) },
     ],
+  },
+  {
+    /**
+     * Signing in gets the store's branding but not its furniture.
+     *
+     * Its own tree rather than a child of StorefrontLayout: the header, nav and
+     * footer added ~500px to a four-field form and made the page scroll. The
+     * ThemeProvider is still here, so the page is unmistakably this store's.
+     */
+    path: '/account/sign-in',
+    element: (
+      <ThemeProvider>
+        <StorefrontAuthLayout />
+      </ThemeProvider>
+    ),
+    children: [{ index: true, element: wrap(<SignIn />) }],
   },
   { path: '/login', element: wrap(<Login />) },
   {
@@ -102,6 +120,7 @@ export const router = createBrowserRouter([
           { path: 'notifications', element: wrap(<AdminNotifications />) },
           { path: 'theme', element: wrap(<AdminAppearance />) },
           { path: 'banners', element: wrap(<AdminBanners />) },
+          { path: 'subscribers', element: wrap(<AdminSubscribers />) },
           { path: 'reviews', element: wrap(<AdminReviews />) },
           { path: 'customers', element: wrap(<AdminCustomers />) },
           { path: 'customers/:id', element: wrap(<AdminCustomerDetail />) },
@@ -126,6 +145,7 @@ export const router = createBrowserRouter([
           { path: 'tenants', element: wrap(<PlatformTenants />) },
           { path: 'plans', element: wrap(<PlatformPlans />) },
           { path: 'templates', element: wrap(<PlatformTemplates />) },
+          { path: 'notifications', element: wrap(<PlatformNotifications />) },
           { path: 'audit', element: wrap(<PlatformAudit />) },
         ],
       },

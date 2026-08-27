@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { OrderStatus, TenantStatus } from '@prisma/client';
+import { OrderStatus, ProductStatus, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { money, round2, ZERO } from '../common/money';
 
@@ -23,6 +23,140 @@ const REVENUE_STATUSES: OrderStatus[] = [
 @Injectable()
 export class PlatformAnalyticsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * One store, in the same shape the platform overview reports the whole
+   * platform in.
+   *
+   * Deliberately not `AnalyticsService.dashboard`: that one reads through the
+   * tenant-scoped client and answers for *the caller's* tenant, which is the
+   * right thing for a shopkeeper and useless for an operator comparing stores.
+   * This runs unscoped with an explicit `tenantId`, which is only safe because
+   * the route is `@PlatformOnly`.
+   */
+  async storeBreakdown(tenantId: string, days = 30) {
+    const to = new Date();
+    const from = new Date(to.getTime() - days * 86_400_000);
+    // The window immediately before, so "change" compares like with like.
+    const previousFrom = new Date(from.getTime() - days * 86_400_000);
+
+    return this.prisma.runUnscoped(async (db) => {
+      const tenant = await db.tenant.findUnique({
+        where: { id: tenantId },
+        select: {
+          id: true,
+          slug: true,
+          businessName: true,
+          status: true,
+          createdAt: true,
+          contactEmail: true,
+          store: { select: { name: true, isPublished: true, currency: true } },
+          subscription: { select: { plan: { select: { name: true } } } },
+        },
+      });
+
+      if (!tenant) return null;
+
+      const revenueWindow = { status: { in: REVENUE_STATUSES }, tenantId };
+
+      const [orders, previousOrders, customers, products, live, topProducts, byStatus] =
+        await Promise.all([
+          db.order.findMany({
+            where: { ...revenueWindow, placedAt: { gte: from, lte: to } },
+            select: { grandTotal: true, placedAt: true },
+          }),
+          db.order.findMany({
+            where: { ...revenueWindow, placedAt: { gte: previousFrom, lt: from } },
+            select: { grandTotal: true },
+          }),
+          db.customer.count({ where: { tenantId } }),
+          db.product.count({ where: { tenantId, deletedAt: null } }),
+          db.product.count({
+            where: { tenantId, deletedAt: null, status: ProductStatus.ACTIVE },
+          }),
+          db.orderItem.groupBy({
+            by: ['productId'],
+            where: { tenantId, order: { ...revenueWindow, placedAt: { gte: from, lte: to } } },
+            _sum: { quantity: true, lineTotal: true },
+            orderBy: { _sum: { lineTotal: 'desc' } },
+            take: 5,
+          }),
+          db.order.groupBy({
+            by: ['status'],
+            where: { tenantId, placedAt: { gte: from, lte: to } },
+            _count: { id: true },
+          }),
+        ]);
+
+      const gross = round2(orders.reduce((t, o) => t.add(money(o.grandTotal)), ZERO));
+      const previousGross = round2(
+        previousOrders.reduce((t, o) => t.add(money(o.grandTotal)), ZERO),
+      );
+
+      /**
+       * `OrderItem.productId` is nullable: a line snapshots what was bought, so
+       * it outlives the product row and keeps reporting the sale. Those lines
+       * are dropped from a "top products" list — they have no product to be top
+       * of — but their revenue is still counted in `gross` above, which is what
+       * makes the totals add up.
+       */
+      const soldIds = topProducts
+        .map((r) => r.productId)
+        .filter((id): id is string => id !== null);
+
+      // Names in one query rather than one per row.
+      const productNames = await db.product.findMany({
+        where: { id: { in: soldIds } },
+        select: { id: true, name: true, sku: true },
+      });
+      const byProductId = new Map(productNames.map((p) => [p.id, p]));
+
+      return {
+        tenant: {
+          id: tenant.id,
+          slug: tenant.slug,
+          businessName: tenant.businessName,
+          storeName: tenant.store?.name ?? tenant.businessName,
+          status: tenant.status,
+          isPublished: tenant.store?.isPublished ?? false,
+          currency: tenant.store?.currency ?? 'INR',
+          contactEmail: tenant.contactEmail,
+          plan: tenant.subscription?.plan?.name ?? null,
+          createdAt: tenant.createdAt.toISOString(),
+        },
+        range: { days, from: from.toISOString(), to: to.toISOString() },
+        revenue: {
+          total: gross.toFixed(2),
+          previous: previousGross.toFixed(2),
+          // Null rather than 0% when there is nothing to compare against — a
+          // store's first month is not "no change".
+          changePercent: previousGross.isZero()
+            ? null
+            : Number(
+                gross.minus(previousGross).dividedBy(previousGross).times(100).toFixed(1),
+              ),
+        },
+        orders: {
+          count: orders.length,
+          previous: previousOrders.length,
+          averageValue: orders.length
+            ? gross.dividedBy(orders.length).toFixed(2)
+            : '0.00',
+          byStatus: Object.fromEntries(byStatus.map((r) => [r.status, r._count.id])),
+        },
+        catalogue: { products, live, customers },
+        topProducts: topProducts
+          .filter((r): r is typeof r & { productId: string } => r.productId !== null)
+          .map((r) => ({
+            id: r.productId,
+            name: byProductId.get(r.productId)?.name ?? 'Deleted product',
+            sku: byProductId.get(r.productId)?.sku ?? '',
+            unitsSold: r._sum.quantity ?? 0,
+            revenue: money(r._sum.lineTotal ?? 0).toFixed(2),
+          })),
+      };
+    });
+  }
 
   async overview(days = 30) {
     const to = new Date();

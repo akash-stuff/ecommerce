@@ -8,6 +8,7 @@ import { Field, FormError, FormGrid, Input, Modal, Select, Textarea } from '@/co
 import { ImageUpload } from '@/components/admin/ImageUpload';
 import { SECTION_LABELS, TemplatePreview } from '@/components/admin/TemplatePreview';
 import { BACKGROUND_LABELS } from '@/features/theme/backgrounds';
+import { toast, toastFromError } from '@/components/Toasts';
 
 interface Draft {
   id?: string;
@@ -69,12 +70,16 @@ export default function Templates() {
   };
 
   const save = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (d: Draft) => {
       const payload = {
         name: d.name,
         category: d.category,
         description: d.description || undefined,
-        previewImage: d.previewImage || undefined,
+        // Empty clears the thumbnail; absent would leave the old one in place.
+        previewImage: d.previewImage,
         defaultTheme: {
           primaryColor: d.primaryColor,
           secondaryColor: d.secondaryColor,
@@ -91,20 +96,28 @@ export default function Templates() {
         : platformService.createTemplate({ ...payload, slug: d.slug || undefined });
     },
     onSuccess: () => {
+      toast.saved('Template saved');
       invalidate();
       setDraft(null);
     },
   });
 
   const setActive = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
       platformService.updateTemplate(id, { isActive }),
     onSuccess: invalidate,
   });
 
   const remove = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (id: string) => platformService.deleteTemplate(id),
     onSuccess: () => {
+      toast.saved('Template deleted');
       invalidate();
       setConfirmDelete(null);
     },

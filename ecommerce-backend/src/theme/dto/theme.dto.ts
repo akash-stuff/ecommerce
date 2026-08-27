@@ -7,11 +7,11 @@ import {
   IsObject,
   IsOptional,
   IsString,
-  IsUrl,
   IsUUID,
   Length,
   MaxLength,
 } from 'class-validator';
+import { IsUrlOrEmpty } from '../../common/decorators/is-url-or-empty';
 import { MAX_CUSTOM_CSS_LENGTH } from '../css-sanitiser';
 import {
   BACKGROUND_FITS,
@@ -58,9 +58,9 @@ export class UpdateThemeDto {
   @IsOptional() @IsIn(ALLOWED_FONTS as unknown as string[]) headingFont?: string;
 
   @ApiPropertyOptional({ description: 'Absolute URL, or empty to remove' })
-  @IsOptional() @IsUrl({ require_tld: false }) logoUrl?: string;
+  @IsUrlOrEmpty() logoUrl?: string;
 
-  @ApiPropertyOptional() @IsOptional() @IsUrl({ require_tld: false }) faviconUrl?: string;
+  @ApiPropertyOptional() @IsUrlOrEmpty() faviconUrl?: string;
 
   @ApiPropertyOptional({ enum: LOGO_SIZES, description: 'Header logo height' })
   @IsOptional() @IsIn(LOGO_SIZES as unknown as string[]) logoSize?: string;
@@ -73,10 +73,21 @@ export class UpdateThemeDto {
   @IsOptional() @IsIn(BACKGROUND_PRESETS as unknown as string[]) background?: string;
 
   @ApiPropertyOptional({ description: 'Overrides the preset. Empty to remove.' })
-  @IsOptional() @IsUrl({ require_tld: false }) backgroundImageUrl?: string;
+  @IsUrlOrEmpty() backgroundImageUrl?: string;
 
   @ApiPropertyOptional({ enum: BACKGROUND_FITS })
   @IsOptional() @IsIn(BACKGROUND_FITS as unknown as string[]) backgroundFit?: string;
+
+  @ApiPropertyOptional({ description: 'Artwork beside the shopper sign-in form' })
+  @IsUrlOrEmpty() loginImageUrl?: string;
+
+  /**
+   * Plain text, and short. It is rendered as text rather than markup — a store
+   * owner typing a greeting must not be able to put a tag on a page every
+   * shopper sees.
+   */
+  @ApiPropertyOptional({ description: 'A short line shown on the sign-in page' })
+  @IsOptional() @IsString() @MaxLength(160) loginMessage?: string;
 
   @ApiPropertyOptional({ description: 'Platform name to profile URL' })
   @IsOptional() @IsObject() socialLinks?: Record<string, string>;

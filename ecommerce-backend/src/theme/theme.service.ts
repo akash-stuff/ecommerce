@@ -61,6 +61,8 @@ export class ThemeService {
     if (dto.backgroundImageUrl !== undefined) {
       data.backgroundImageUrl = dto.backgroundImageUrl || null;
     }
+    if (dto.loginImageUrl !== undefined) data.loginImageUrl = dto.loginImageUrl || null;
+    if (dto.loginMessage !== undefined) data.loginMessage = dto.loginMessage.trim() || null;
     if (dto.socialLinks !== undefined) {
       data.socialLinks = sanitiseSocialLinks(dto.socialLinks) as Prisma.InputJsonValue;
     }

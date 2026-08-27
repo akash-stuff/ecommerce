@@ -76,6 +76,7 @@ model Tenant {
   notifications Notification[]
   paymentGateways PaymentGateway[]
   emailOtps     EmailOtp[]
+  newsletterSubscribers NewsletterSubscriber[]
 
   @@index([status])
   @@map("tenants")
@@ -333,6 +334,12 @@ model Theme {
   backgroundImageUrl String?
   /// 'cover' for a photograph, 'tile' for a seamless texture.
   backgroundFit  String  @default("cover")
+  /// Artwork beside the shopper sign-in form. Optional; the form is centred
+  /// on its own when absent rather than showing an empty panel.
+  loginImageUrl  String?
+  /// A short line of the store's own words on that page — a delivery promise,
+  /// a welcome, whatever the shopkeeper wants a new customer to read.
+  loginMessage   String?
   headerConfig   Json    @default("{}")
   footerConfig   Json    @default("{}")
   homepageLayout Json    @default("[]")
@@ -989,6 +996,35 @@ model Page {
 
   @@unique([tenantId, slug])
   @@map("pages")
+}
+
+/// An address left in the storefront's "hear from us" form.
+///
+/// Not a Customer: there is no account, no password and no proven ownership of
+/// the address. Keeping the two apart means a marketing list can be exported or
+/// cleared without touching order history, and stops a signup form from
+/// half-creating accounts.
+///
+/// `unsubscribedAt` rather than a delete, so a resubscribe can be told apart
+/// from a first signup and an address that asked to be left alone is not
+/// silently re-added by the next form submission.
+model NewsletterSubscriber {
+  id             String    @id @default(uuid())
+  tenantId       String
+  /// Stored lowercased and trimmed; the unique index below is what makes a
+  /// second signup idempotent rather than a duplicate row.
+  email          String
+  /// Which form it came from, so a future checkout opt-in is distinguishable
+  /// from the homepage panel without a schema change.
+  source         String    @default("storefront")
+  unsubscribedAt DateTime?
+  createdAt      DateTime  @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, email])
+  @@index([tenantId, createdAt])
+  @@map("newsletter_subscribers")
 }
 
 /// Promotional slots on a storefront. `placement` decides where it renders and

@@ -70,6 +70,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
       body = { success: false, message: 'Invalid request.', code: 'VALIDATION_ERROR', requestId };
     }
 
+    /**
+     * The throttler's own message is a class name.
+     *
+     * `ThrottlerException: Too Many Requests` reaches whoever tripped it — a
+     * shopper signing up to a mailing list, or waiting on a verification code —
+     * and names an implementation detail instead of saying what to do. Replaced
+     * only when the guard's default is what came through, so a route that sets
+     * its own 429 message keeps it.
+     */
+    if (status === HttpStatus.TOO_MANY_REQUESTS && /^ThrottlerException/.test(body.message)) {
+      body.message = 'That was a few too many tries. Wait a minute and try again.';
+    }
+
     if (status >= 500) {
       this.logger.error(
         `[${requestId}] ${body.code}`,

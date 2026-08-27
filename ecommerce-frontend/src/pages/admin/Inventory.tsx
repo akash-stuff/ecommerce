@@ -6,6 +6,7 @@ import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { DataTable, type Column } from '@/components/admin/DataTable';
 import { Field, FormError, FormGrid, Input, Modal, Select, Textarea } from '@/components/admin/Modal';
 import type { InventoryTransaction } from '@/types/api';
+import { toast, toastFromError } from '@/components/Toasts';
 
 /** SALE and CANCELLATION are written by checkout, not chosen by a person. */
 const MANUAL_REASONS = [
@@ -37,6 +38,9 @@ export default function Inventory() {
   });
 
   const adjust = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: () =>
       inventoryService.adjust({
         productId,
@@ -45,6 +49,7 @@ export default function Inventory() {
         note: note || undefined,
       }),
     onSuccess: () => {
+      toast.saved('Stock adjusted');
       queryClient.invalidateQueries({ queryKey: ['admin-inventory'] });
       queryClient.invalidateQueries({ queryKey: ['admin-products'] });
       setAdjusting(false);

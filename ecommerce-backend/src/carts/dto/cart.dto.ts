@@ -10,6 +10,7 @@ import {
   Max,
   Min,
 } from 'class-validator';
+import { BooleanQuery } from '../../common/decorators/boolean-query';
 
 export class AddCartItemDto {
   @IsUUID() productId!: string;
@@ -28,9 +29,7 @@ export class CartViewQueryDto {
   @ApiPropertyOptional() @IsOptional() @IsUUID() shippingMethodId?: string;
 
   @ApiPropertyOptional({ description: 'Include the COD fee in the total' })
-  @IsOptional()
-  @Transform(({ value }) => value === true || value === 'true')
-  @IsBoolean()
+  @BooleanQuery()
   cod?: boolean;
 }
 

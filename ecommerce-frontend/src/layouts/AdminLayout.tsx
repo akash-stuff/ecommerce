@@ -3,9 +3,10 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, Tags, ShoppingCart, Users, Boxes, Truck, Mail,
   Ticket, Palette, BarChart3, Settings, LogOut, Star, FileText, Image, Menu, X,
-  ExternalLink, CreditCard,
+  ExternalLink, CreditCard, AtSign,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
+import { Toaster } from '@/components/Toasts';
 import { PERMISSIONS } from '@/config/permissions';
 
 /**
@@ -22,6 +23,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
       { to: '/admin', label: 'Overview', icon: LayoutDashboard, end: true, permission: null },
       { to: '/admin/orders', label: 'Orders', icon: ShoppingCart, permission: PERMISSIONS.ORDERS_READ },
       { to: '/admin/customers', label: 'Customers', icon: Users, permission: PERMISSIONS.CUSTOMERS_READ },
+      { to: '/admin/subscribers', label: 'Subscribers', icon: AtSign, permission: PERMISSIONS.CUSTOMERS_READ },
       { to: '/admin/analytics', label: 'Analytics', icon: BarChart3, permission: PERMISSIONS.ANALYTICS_READ },
     ],
   },
@@ -181,6 +183,7 @@ export function AdminLayout() {
 
   return (
     <div className="admin-chrome flex min-h-screen bg-ink-50">
+      <Toaster />
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-ink-100 bg-white lg:flex">
         {sidebar}
       </aside>

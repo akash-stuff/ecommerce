@@ -6,6 +6,7 @@ import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { Field, FormError, FormGrid, Input, Modal, Select } from '@/components/admin/Modal';
 import { formatMoney } from '@/utils/format';
 import type { ShippingZone } from '@/types/api';
+import { toast, toastFromError } from '@/components/Toasts';
 
 interface ZoneDraft {
   id?: string;
@@ -47,6 +48,9 @@ export default function Shipping() {
   };
 
   const saveZone = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (d: ZoneDraft) => {
       const payload = {
         name: d.name,
@@ -56,10 +60,16 @@ export default function Shipping() {
       };
       return d.id ? shippingService.updateZone(d.id, payload) : shippingService.createZone(payload);
     },
-    onSuccess: refresh,
+    onSuccess: () => {
+      toast.saved('Zone saved');
+      refresh();
+    },
   });
 
   const saveMethod = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (d: MethodDraft) => {
       const payload = {
         name: d.name,
@@ -75,17 +85,32 @@ export default function Shipping() {
         ? shippingService.updateMethod(d.id, payload)
         : shippingService.createMethod({ ...payload, zoneId: d.zoneId });
     },
-    onSuccess: refresh,
+    onSuccess: () => {
+      toast.saved('Delivery method saved');
+      refresh();
+    },
   });
 
   const removeZone = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (id: string) => shippingService.removeZone(id),
-    onSuccess: refresh,
+    onSuccess: () => {
+      toast.saved('Zone deleted');
+      refresh();
+    },
   });
 
   const removeMethod = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (id: string) => shippingService.removeMethod(id),
-    onSuccess: refresh,
+    onSuccess: () => {
+      toast.saved('Delivery method deleted');
+      refresh();
+    },
   });
 
   const newMethod = (zoneId: string): MethodDraft => ({

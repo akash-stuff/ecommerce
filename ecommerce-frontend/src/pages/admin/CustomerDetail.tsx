@@ -5,6 +5,7 @@ import { Page, SecondaryButton } from '@/components/admin/Page';
 import { StatusBadge } from '@/components/admin/DataTable';
 import { FormError } from '@/components/admin/Modal';
 import { formatMoney } from '@/utils/format';
+import { toast, toastFromError } from '@/components/Toasts';
 
 interface CustomerDetail {
   id: string;
@@ -57,7 +58,9 @@ export default function CustomerDetail() {
   const toggleActive = useMutation({
     mutationFn: (isActive: boolean) =>
       unwrap(apiClient.patch(`/customers/${id}`, { isActive })),
-    onSuccess: () => {
+    onError: (e) => toastFromError(e),
+    onSuccess: (_data, isActive) => {
+      toast.saved(isActive ? 'Customer reactivated' : 'Customer deactivated');
       queryClient.invalidateQueries({ queryKey: ['admin-customer', id] });
       queryClient.invalidateQueries({ queryKey: ['admin-customers'] });
     },

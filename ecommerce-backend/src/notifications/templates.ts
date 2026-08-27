@@ -390,3 +390,99 @@ export function storeSetup(data: {
 
   return { subject: `${data.storeName} is ready — here is your admin`, html, text };
 }
+
+/**
+ * The password-reset code.
+ *
+ * Deliberately near-identical to the verification code email, and deliberately
+ * a *different* message: telling someone "confirm your email" when they asked
+ * to reset a password reads as the wrong email arriving, and is exactly when a
+ * cautious person decides they have been phished.
+ */
+export function passwordResetCode(data: {
+  storeName: string;
+  storeEmail: string;
+  code: string;
+  expiresInMinutes: number;
+}): RenderedEmail {
+  const e = escapeHtml;
+  const spaced = data.code.replace(/(\d{3})(\d{3})/, '$1 $2');
+
+  const html = `
+<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#111">
+  <h1 style="font-size:20px;margin:0 0 4px">Reset your password</h1>
+  <p style="color:#555;margin:0 0 20px">
+    Enter this code on ${e(data.storeName)} to choose a new password.
+  </p>
+  <p style="font-size:30px;letter-spacing:6px;font-weight:600;margin:0 0 20px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace">
+    ${e(spaced)}
+  </p>
+  <p style="color:#555;margin:0 0 4px">It expires in ${data.expiresInMinutes} minutes.</p>
+  <p style="color:#888;font-size:13px;margin:0">
+    If you did not ask for this, ignore this email — your password has not changed.
+  </p>
+  <p style="color:#888;font-size:12px;margin-top:32px;border-top:1px solid #eee;padding-top:16px">
+    ${e(data.storeName)} · ${e(data.storeEmail)}
+  </p>
+</div>`.trim();
+
+  const text = [
+    `Reset your password`,
+    ``,
+    `Enter this code on ${data.storeName} to choose a new password:`,
+    ``,
+    `    ${data.code}`,
+    ``,
+    `It expires in ${data.expiresInMinutes} minutes.`,
+    `If you did not ask for this, ignore this email - your password has not changed.`,
+    ``,
+    `${data.storeName} · ${data.storeEmail}`,
+  ].join('\n');
+
+  return { subject: `${data.code} is your ${data.storeName} password reset code`, html, text };
+}
+
+/**
+ * Confirms a storefront newsletter signup.
+ *
+ * Says how to get off the list, in both the HTML and the text part. There is no
+ * one-click unsubscribe link yet — that needs a signed token and a public route
+ * to land on — and a list with no stated way out is the part of this that would
+ * be wrong to ship silently. Replying to the store's own address works today,
+ * so that is what it offers.
+ */
+export function newsletterWelcome(data: {
+  storeName: string;
+  storeEmail: string;
+  alreadySubscribed: boolean;
+}): RenderedEmail {
+  const e = escapeHtml;
+
+  const opening = data.alreadySubscribed
+    ? `You are already on the ${data.storeName} list — nothing has changed, and you will not get this twice.`
+    : `You will hear from ${data.storeName} when something new arrives. No more than that.`;
+
+  const html = `
+<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#111">
+  <h1 style="font-size:20px;margin:0 0 4px">You are on the list</h1>
+  <p style="color:#555;margin:0 0 16px">${e(opening)}</p>
+  <p style="color:#888;font-size:13px;margin:0">
+    Want off it? Reply to this email and the store will take you off.
+  </p>
+  <p style="color:#888;font-size:12px;margin-top:32px;border-top:1px solid #eee;padding-top:16px">
+    ${e(data.storeName)} · ${e(data.storeEmail)}
+  </p>
+</div>`.trim();
+
+  const text = [
+    `You are on the list`,
+    ``,
+    opening,
+    ``,
+    `Want off it? Reply to this email and the store will take you off.`,
+    ``,
+    `${data.storeName} · ${data.storeEmail}`,
+  ].join('\n');
+
+  return { subject: `You are on the ${data.storeName} list`, html, text };
+}

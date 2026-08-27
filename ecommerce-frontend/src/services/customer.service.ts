@@ -57,6 +57,19 @@ export const customerService = {
   resendCode: (email: string) =>
     unwrap<{ sent: true }>(apiClient.post('/auth/customer/resend-code', { email })),
 
+  /**
+   * Starts a password reset. Always reports success — the API will not say
+   * whether an account exists, so neither can this.
+   */
+  forgotPassword: (email: string) =>
+    unwrap<{ sent: true }>(apiClient.post('/auth/customer/forgot-password', { email })),
+
+  /** Sets the new password and signs in. Every other session is ended. */
+  resetPassword: (email: string, code: string, password: string) =>
+    unwrap<TokenPair>(
+      apiClient.post('/auth/customer/reset-password', { email, code, password }),
+    ).then(keep),
+
   login: (email: string, password: string) =>
     unwrap<TokenPair>(apiClient.post('/auth/customer/login', { email, password })).then(keep),
 

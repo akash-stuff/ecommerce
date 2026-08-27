@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
 import { IsBoolean, IsOptional, IsString, Length, MaxLength } from 'class-validator';
+import { BooleanQuery } from '../../common/decorators/boolean-query';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';
 import { MAX_PAGE_CONTENT_LENGTH } from '../html-sanitiser';
 
@@ -28,9 +28,7 @@ export class UpdatePageDto {
 }
 
 export class PageQueryDto extends PaginationQueryDto {
-  @ApiPropertyOptional()
-  @IsOptional()
-  @Transform(({ value }) => value === true || value === 'true')
-  @IsBoolean()
+  @ApiPropertyOptional({ description: 'Omit for both drafts and published pages' })
+  @BooleanQuery()
   isPublished?: boolean;
 }

@@ -175,6 +175,9 @@ export function DataTable<T>({
 export function StatusBadge({ value }: { value: string }) {
   const tone: Record<string, string> = {
     active: 'bg-green-50 text-green-700 ring-green-600/15',
+    // A page is published, not "active" — the pair a shopkeeper is choosing
+    // between on that screen is published/draft.
+    published: 'bg-green-50 text-green-700 ring-green-600/15',
     paid: 'bg-green-50 text-green-700 ring-green-600/15',
     sent: 'bg-green-50 text-green-700 ring-green-600/15',
     delivered: 'bg-green-50 text-green-700 ring-green-600/15',
@@ -188,6 +191,8 @@ export function StatusBadge({ value }: { value: string }) {
     archived: 'bg-ink-100 text-ink-500 ring-ink-950/10',
     retired: 'bg-ink-100 text-ink-500 ring-ink-950/10',
     draft: 'bg-ink-100 text-ink-500 ring-ink-950/10',
+    'opted out': 'bg-ink-100 text-ink-500 ring-ink-950/10',
+    subscribed: 'bg-green-50 text-green-700 ring-green-600/15',
   };
 
   const key = value.toLowerCase();

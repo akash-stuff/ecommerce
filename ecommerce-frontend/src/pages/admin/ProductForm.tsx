@@ -8,6 +8,7 @@ import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { Field, FormError, FormGrid, Input, Select, Textarea } from '@/components/admin/Modal';
 import { ImageListUpload } from '@/components/admin/ImageListUpload';
 import type { Product } from '@/types/api';
+import { toast, toastFromError } from '@/components/Toasts';
 
 interface Draft {
   name: string;
@@ -75,6 +76,9 @@ export default function ProductForm() {
   }, [existing.data]);
 
   const save = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: () => {
       const payload: Record<string, unknown> = {
         name: draft.name,
@@ -110,6 +114,7 @@ export default function ProductForm() {
       return isEdit ? productService.update(id!, payload) : productService.create(payload);
     },
     onSuccess: (product) => {
+      toast.saved('Product saved');
       queryClient.invalidateQueries({ queryKey: ['admin-products'] });
       queryClient.invalidateQueries({ queryKey: ['admin-product', id] });
       navigate(`/admin/products/${(product as Product).id}/edit`, { replace: true });
@@ -298,7 +303,6 @@ export default function ProductForm() {
             <SecondaryButton type="button" onClick={() => navigate('/admin/products')}>
               Cancel
             </SecondaryButton>
-            {save.isSuccess && <span className="text-sm text-green-700">Saved</span>}
           </div>
         </form>
       )}

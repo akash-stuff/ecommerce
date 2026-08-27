@@ -31,6 +31,29 @@
   [type='radio'] {
     accent-color: #17150f;
   }
+
+  /*
+   * Form controls state their own colours.
+   *
+   * A browser gives an input a white background but lets `color` inherit. On a
+   * dark storefront `body` is `text-ink-100`, so an input with no colour of its
+   * own ends up near-white text on the UA's white background — invisible while
+   * you type. Setting both here fixes every form on the storefront at once
+   * rather than one class string at a time.
+   */
+  input,
+  textarea,
+  select {
+    @apply bg-white text-ink-950;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    @apply text-ink-400;
+  }
+  /* Colour swatches are the one control whose background *is* the value. */
+  input[type='color'] {
+    background-color: transparent;
+  }
 }
 
 /* Declared here rather than in the Tailwind theme: nothing uses it through an
@@ -61,6 +84,14 @@
   }
   .surface-dark .surface-muted {
     @apply text-ink-300;
+  }
+  /*
+   * Field labels sit on the dark page, not on the control, so they invert with
+   * everything else. The control itself stays a light card — a form is easier
+   * to read as a lit panel than as more dark-on-dark.
+   */
+  .surface-dark label > span:first-child {
+    @apply text-ink-200;
   }
   .surface-dark .surface-strong {
     @apply text-white;

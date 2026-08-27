@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional, PartialType, OmitType } from '@nestjs/swagger';
 import {
-  IsEmail, IsOptional, IsString, IsUUID, Matches, MaxLength, MinLength,
+  IsEmail, IsOptional, IsString, IsUUID, Length, Matches, MaxLength, MinLength,
 } from 'class-validator';
 
 export class CreateTenantDto {
@@ -33,3 +33,14 @@ export class CreateTenantDto {
 export class UpdateTenantDto extends PartialType(
   OmitType(CreateTenantDto, ['slug', 'ownerEmail', 'ownerPassword', 'ownerFirstName'] as const),
 ) {}
+
+/**
+ * Deleting a store.
+ *
+ * The slug is typed back rather than inferred from the path, so the request
+ * carries proof that a person read which store they were about to destroy.
+ */
+export class DeleteTenantDto {
+  @ApiProperty({ description: "The store's slug, typed to confirm" })
+  @IsString() @Length(1, 60) confirmSlug!: string;
+}

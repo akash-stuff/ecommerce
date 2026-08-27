@@ -5,6 +5,7 @@ import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { StatusBadge } from '@/components/admin/DataTable';
 import { Field, FormError, FormGrid, Input, Modal, Select } from '@/components/admin/Modal';
 import { formatMoney } from '@/utils/format';
+import { toast, toastFromError } from '@/components/Toasts';
 
 interface Draft {
   id?: string;
@@ -43,6 +44,9 @@ export default function Plans() {
   };
 
   const save = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (d: Draft) => {
       const payload = {
         priceMonthly: Number(d.priceMonthly),
@@ -56,7 +60,10 @@ export default function Plans() {
         ? platformService.updatePlan(d.id, payload)
         : platformService.createPlan({ ...payload, name: d.name });
     },
-    onSuccess: refresh,
+    onSuccess: () => {
+      toast.saved('Plan saved');
+      refresh();
+    },
   });
 
   const retire = useMutation({

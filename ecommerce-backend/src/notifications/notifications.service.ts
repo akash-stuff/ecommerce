@@ -9,8 +9,10 @@ import { orderPlacedSms, orderStatusSms } from './sms-templates';
 import {
   customerWelcome,
   emailVerificationCode,
+  newsletterWelcome,
   orderConfirmation,
   orderStatusChanged,
+  passwordResetCode,
   storeSetup,
   type OrderEmailData,
   type RenderedEmail,
@@ -181,6 +183,42 @@ export class NotificationsService {
     });
   }
 
+  /**
+   * Confirms a newsletter signup.
+   *
+   * Email only, and for the same reason as the welcome mail: a text message
+   * nobody asked for is marketing, and consent for it was not given by typing
+   * an email address into a form.
+   */
+  newsletterSubscribed(
+    to: string,
+    tenantId: string,
+    data: { storeName: string; storeEmail: string; alreadySubscribed: boolean },
+  ) {
+    return this.deliverEmail({
+      tenantId,
+      event: 'newsletter.subscribed',
+      to,
+      payload: { alreadySubscribed: data.alreadySubscribed },
+      rendered: newsletterWelcome(data),
+    });
+  }
+
+  /** The reset code. Awaited, like the verification one, for the same reason. */
+  passwordResetCode(
+    to: string,
+    tenantId: string,
+    data: { storeName: string; storeEmail: string; code: string; expiresInMinutes: number },
+  ) {
+    return this.deliverEmail({
+      tenantId,
+      event: 'customer.passwordReset',
+      to,
+      payload: { expiresInMinutes: data.expiresInMinutes },
+      rendered: passwordResetCode(data),
+    });
+  }
+
   // --- Admin log -------------------------------------------------------------
 
   async findAll(query: PaginationQueryDto): Promise<PaginatedResult<unknown>> {
@@ -211,6 +249,69 @@ export class NotificationsService {
   }
 
   /** Retries everything still queued or failed for this tenant. */
+  /**
+   * Every store's messages, for the platform operator.
+   *
+   * Separate method rather than a nullable tenant on `findAll`, because the two
+   * differ in exactly the way that matters: `findAll` *requires* a tenant and
+   * would silently widen to the whole platform if that requirement were ever
+   * relaxed by a caller passing undefined. Cross-tenant reads should have to
+   * say so in their own name, and this one is reachable only from a
+   * `@PlatformOnly` route.
+   *
+   * Each row carries the store it belongs to, since "who was this sent for" is
+   * the first question an operator has about a list spanning every tenant.
+   */
+  async findAllAcrossPlatform(
+    query: PaginationQueryDto & { tenantId?: string; status?: string; event?: string },
+  ): Promise<PaginatedResult<unknown>> {
+    const where: Prisma.NotificationWhereInput = {
+      ...(query.tenantId ? { tenantId: query.tenantId } : {}),
+      ...(query.status ? { status: query.status as NotificationStatus } : {}),
+      ...(query.event ? { event: query.event } : {}),
+      ...(query.search
+        ? { recipient: { contains: query.search, mode: 'insensitive' } }
+        : {}),
+    };
+
+    const [items, total] = await this.prisma.runUnscoped((db) =>
+      Promise.all([
+        db.notification.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip: query.skip,
+          take: query.limit,
+        }),
+        db.notification.count({ where }),
+      ]),
+    );
+
+    // Store names resolved in one query rather than one per row.
+    const tenantIds = [...new Set(items.map((i) => i.tenantId).filter((id): id is string => !!id))];
+    const tenants = await this.prisma.runUnscoped((db) =>
+      db.tenant.findMany({
+        where: { id: { in: tenantIds } },
+        select: { id: true, slug: true, businessName: true },
+      }),
+    );
+    const byId = new Map(tenants.map((t) => [t.id, t]));
+
+    return paginate(
+      items.map((row) => ({
+        ...row,
+        // Null for a platform-level notice, which has no store by design.
+        store: row.tenantId
+          ? {
+              slug: byId.get(row.tenantId)?.slug ?? 'unknown',
+              businessName: byId.get(row.tenantId)?.businessName ?? 'Deleted store',
+            }
+          : null,
+      })),
+      total,
+      query,
+    );
+  }
+
   async retryPending(): Promise<{ attempted: number; sent: number }> {
     const tenantId = RequestContextStore.requireTenantId();
 

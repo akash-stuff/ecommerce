@@ -1,13 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { customerService } from '@/services/customer.service';
 import { useCustomerStore } from '@/store/customer.store';
 import { useStore } from '@/features/theme/ThemeProvider';
-
-type Mode = 'signin' | 'register' | 'verify';
+import { toast } from '@/components/Toasts';
 
 /**
- * Customer sign-in and registration on one screen.
+ * Sign in, register, verify and reset — one screen, four modes.
  *
  * The account is tenant-scoped: registering here creates an account at *this*
  * store only, which the copy says plainly so a shopper is not surprised when
@@ -17,17 +16,21 @@ type Mode = 'signin' | 'register' | 'verify';
  * email a code; the second confirms it, which is the point at which the account
  * actually exists. Nothing is created in between, so abandoning the form here
  * leaves nothing behind and does not reserve the email address.
+ *
+ * Resetting a password has the same shape for the same reason — a code proves
+ * the address, and only then does anything change.
  */
+type Mode = 'signin' | 'register' | 'verify' | 'forgot' | 'reset';
+
 export default function SignIn() {
   const store = useStore();
   const navigate = useNavigate();
   const [params] = useSearchParams();
   const redirectTo = params.get('next') ?? '/account';
 
-  const { signIn, register, verifyEmail, status } = useCustomerStore();
+  const { signIn, register, verifyEmail, resetPassword, status } = useCustomerStore();
   const [mode, setMode] = useState<Mode>('signin');
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -37,16 +40,23 @@ export default function SignIn() {
   });
 
   const [code, setCode] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [resendIn, setResendIn] = useState(0);
   const [expiresIn, setExpiresIn] = useState(0);
 
   const busy = status === 'loading';
+  const awaitingCode = mode === 'verify' || mode === 'reset';
 
   const field = (key: keyof typeof form) => ({
     value: form[key],
     onChange: (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm({ ...form, [key]: e.target.value }),
   });
+
+  const go = (next: Mode) => {
+    setMode(next);
+    setError(null);
+  };
 
   /**
    * One interval drives both countdowns.
@@ -56,18 +66,17 @@ export default function SignIn() {
    * has no way to know why.
    */
   useEffect(() => {
-    if (mode !== 'verify') return;
+    if (!awaitingCode) return;
     const tick = window.setInterval(() => {
       setResendIn((s) => (s > 0 ? s - 1 : 0));
       setExpiresIn((s) => (s > 0 ? s - 1 : 0));
     }, 1000);
     return () => window.clearInterval(tick);
-  }, [mode]);
+  }, [awaitingCode]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    setNotice(null);
     try {
       if (mode === 'signin') {
         await signIn(form.email, form.password);
@@ -86,7 +95,27 @@ export default function SignIn() {
         setExpiresIn(challenge.expiresInSeconds);
         setResendIn(challenge.resendInSeconds);
         setCode('');
-        setMode('verify');
+        go('verify');
+        return;
+      }
+
+      if (mode === 'forgot') {
+        await customerService.forgotPassword(form.email);
+        // Worded the same way whether or not an account exists — the API will
+        // not reveal that, so neither does this screen.
+        toast.info('Check your email', `If ${form.email} has an account, a code is on its way.`);
+        setExpiresIn(10 * 60);
+        setResendIn(60);
+        setCode('');
+        setNewPassword('');
+        go('reset');
+        return;
+      }
+
+      if (mode === 'reset') {
+        await resetPassword(form.email, code, newPassword);
+        toast.saved('Password changed', 'You are signed in, and other devices are signed out.');
+        navigate(redirectTo, { replace: true });
         return;
       }
 
@@ -100,8 +129,10 @@ export default function SignIn() {
   const resend = async () => {
     setError(null);
     try {
-      await customerService.resendCode(form.email);
-      setNotice('A new code is on its way.');
+      // Which code to re-send depends on which one they are waiting for.
+      if (mode === 'reset') await customerService.forgotPassword(form.email);
+      else await customerService.resendCode(form.email);
+      toast.info('A new code is on its way.');
       setResendIn(60);
       setExpiresIn(10 * 60);
     } catch (e) {
@@ -109,79 +140,24 @@ export default function SignIn() {
     }
   };
 
-  if (mode === 'verify') {
-    return (
-      <div className="mx-auto max-w-sm px-4 py-16 sm:px-6">
-        <h1 className="font-display text-2xl tracking-tight text-ink-950">Check your email</h1>
-        <p className="mt-2 text-sm text-ink-500">
-          We sent a 6-digit code to <span className="text-ink-900">{form.email}</span>. Enter it to
-          finish creating your {store.name} account.
-        </p>
-
-        <form onSubmit={submit} className="mt-8 space-y-4">
-          <CodeInput value={code} onChange={setCode} />
-
-          {expiresIn > 0 ? (
-            <p className="text-xs text-ink-500">Expires in {formatClock(expiresIn)}</p>
-          ) : (
-            <p className="text-xs text-amber-700">
-              That code has expired — send yourself a new one.
-            </p>
-          )}
-
-          {error && <p className="text-sm text-red-600">{error}</p>}
-          {notice && <p className="text-sm text-green-700">{notice}</p>}
-
-          <button
-            type="submit"
-            disabled={busy || code.replace(/\D/g, '').length < 6}
-            className="w-full rounded-card bg-brand py-3 text-sm font-medium text-white disabled:opacity-40"
-          >
-            {busy ? 'Please wait…' : 'Confirm and create account'}
-          </button>
-        </form>
-
-        <div className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-          <button
-            type="button"
-            onClick={resend}
-            disabled={resendIn > 0}
-            className="font-medium text-brand disabled:text-ink-400"
-          >
-            {resendIn > 0 ? `Resend in ${resendIn}s` : 'Send another code'}
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setMode('register');
-              setError(null);
-              setNotice(null);
-            }}
-            className="text-ink-500 underline"
-          >
-            Use a different email
-          </button>
-        </div>
-
-        <p className="mt-8 text-xs text-ink-500">
-          Nothing is created until the code is confirmed, so you can close this and start again.
-        </p>
-      </div>
-    );
-  }
+  const copy = HEADINGS[mode];
 
   return (
-    <div className="mx-auto max-w-sm px-4 py-16 sm:px-6">
-      <h1 className="font-display text-2xl tracking-tight text-ink-950">
-        {mode === 'signin' ? 'Sign in' : 'Create an account'}
-      </h1>
-      <p className="mt-2 text-sm text-ink-500">
-        {mode === 'signin'
-          ? `Your ${store.name} account.`
-          : `This creates an account at ${store.name}. We will email a code to confirm your address.`}
+    <AuthShell>
+      <h1 className="surface-strong font-display text-3xl tracking-tight">{copy.title}</h1>
+      <p className="surface-muted mt-3 text-sm leading-relaxed">
+        {typeof copy.blurb === 'function' ? copy.blurb(store.name, form.email) : copy.blurb}
       </p>
 
-      <form onSubmit={submit} className="mt-8 space-y-4">
+      {/* The store's own line, when there is no artwork to put it on. Said once
+          either way, never twice. */}
+      {mode === 'signin' && !store.theme.loginImageUrl && store.theme.loginMessage && (
+        <p className="mt-5 border-l-2 border-brand pl-4 text-sm italic text-ink-700">
+          {store.theme.loginMessage}
+        </p>
+      )}
+
+      <form onSubmit={submit} className="mt-7 space-y-4">
         {mode === 'register' && (
           <>
             <Field label="First name">
@@ -193,20 +169,26 @@ export default function SignIn() {
           </>
         )}
 
-        <Field label="Email">
-          <input required type="email" autoComplete="email" {...field('email')} className={input} />
-        </Field>
+        {/* The address is fixed once a code has been sent to it: editing it here
+            would leave the code and the field disagreeing. */}
+        {!awaitingCode && (
+          <Field label="Email">
+            <input required type="email" autoComplete="email" {...field('email')} className={input} />
+          </Field>
+        )}
 
-        <Field label="Password">
-          <input
-            required
-            type="password"
-            minLength={8}
-            autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
-            {...field('password')}
-            className={input}
-          />
-        </Field>
+        {(mode === 'signin' || mode === 'register') && (
+          <Field label="Password">
+            <input
+              required
+              type="password"
+              minLength={8}
+              autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
+              {...field('password')}
+              className={input}
+            />
+          </Field>
+        )}
 
         {mode === 'register' && (
           <Field label="Phone (optional)">
@@ -214,34 +196,180 @@ export default function SignIn() {
           </Field>
         )}
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
+        {awaitingCode && (
+          <>
+            <CodeInput value={code} onChange={setCode} />
+
+            {expiresIn > 0 ? (
+              <p className="surface-muted text-xs">Expires in {formatClock(expiresIn)}</p>
+            ) : (
+              <p className="text-xs text-amber-700">
+                That code has expired — send yourself a new one.
+              </p>
+            )}
+          </>
+        )}
+
+        {mode === 'reset' && (
+          <Field label="New password">
+            <input
+              required
+              type="password"
+              minLength={8}
+              autoComplete="new-password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              className={input}
+            />
+          </Field>
+        )}
+
+        {error && (
+          <p role="alert" className="text-sm text-red-600">
+            {error}
+          </p>
+        )}
 
         <button
           type="submit"
-          disabled={busy}
-          className="w-full rounded-card bg-brand py-3 text-sm font-medium text-white disabled:opacity-40"
+          disabled={busy || (awaitingCode && code.replace(/\D/g, '').length < 6)}
+          className="w-full rounded-card bg-brand py-3 text-sm font-medium text-white transition-transform hover:-translate-y-px disabled:pointer-events-none disabled:opacity-40"
         >
-          {busy ? 'Please wait…' : mode === 'signin' ? 'Sign in' : 'Send verification code'}
+          {busy ? 'Please wait…' : copy.submit}
         </button>
       </form>
 
-      <p className="mt-6 text-sm text-ink-500">
-        {mode === 'signin' ? "Don't have an account? " : 'Already have an account? '}
-        <button
-          onClick={() => {
-            setMode(mode === 'signin' ? 'register' : 'signin');
-            setError(null);
-          }}
-          className="font-medium text-brand"
-        >
-          {mode === 'signin' ? 'Create one' : 'Sign in'}
-        </button>
-      </p>
+      {awaitingCode && (
+        <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+          <button
+            type="button"
+            onClick={resend}
+            disabled={resendIn > 0}
+            className="font-medium text-brand disabled:text-ink-400"
+          >
+            {resendIn > 0 ? `Resend in ${resendIn}s` : 'Send another code'}
+          </button>
+          <button
+            type="button"
+            onClick={() => go(mode === 'reset' ? 'forgot' : 'register')}
+            className="surface-muted underline"
+          >
+            Use a different email
+          </button>
+        </div>
+      )}
 
-      <p className="mt-8 text-xs text-ink-500">
-        Shopping without an account works too — <Link to="/cart" className="underline">your cart</Link>{' '}
-        is kept either way.
+      {mode === 'signin' && (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-x-4 gap-y-2 text-sm">
+          <button type="button" onClick={() => go('forgot')} className="font-medium text-brand">
+            Forgot your password?
+          </button>
+          <span className="surface-muted">
+            No account?{' '}
+            <button type="button" onClick={() => go('register')} className="font-medium text-brand">
+              Create one
+            </button>
+          </span>
+        </div>
+      )}
+
+      {(mode === 'register' || mode === 'forgot') && (
+        <p className="surface-muted mt-5 text-sm">
+          {mode === 'forgot' ? 'Remembered it? ' : 'Already have an account? '}
+          <button type="button" onClick={() => go('signin')} className="font-medium text-brand">
+            Sign in
+          </button>
+        </p>
+      )}
+
+      <p className="surface-muted mt-6 text-xs">
+        {awaitingCode
+          ? 'Nothing changes until the code is confirmed, so you can close this and start again.'
+          : 'Shopping without an account works too — your cart is kept either way.'}
       </p>
+    </AuthShell>
+  );
+}
+
+/** Per-mode copy, kept together so the five screens read as one voice. */
+const HEADINGS: Record<
+  Mode,
+  { title: string; blurb: string | ((store: string, email: string) => string); submit: string }
+> = {
+  signin: {
+    title: 'Sign in',
+    blurb: (store) => `Your ${store} account.`,
+    submit: 'Sign in',
+  },
+  register: {
+    title: 'Create an account',
+    blurb: (store) =>
+      `This creates an account at ${store}. We will email a code to confirm your address.`,
+    submit: 'Send verification code',
+  },
+  verify: {
+    title: 'Check your email',
+    blurb: (store, email) =>
+      `We sent a 6-digit code to ${email}. Enter it to finish creating your ${store} account.`,
+    submit: 'Confirm and create account',
+  },
+  forgot: {
+    title: 'Reset your password',
+    blurb: 'Tell us your email address and we will send a code to reset it.',
+    submit: 'Send reset code',
+  },
+  reset: {
+    title: 'Choose a new password',
+    blurb: (_store, email) =>
+      `Enter the code we sent to ${email} and the password you would like to use.`,
+    submit: 'Change password and sign in',
+  },
+};
+
+/**
+ * The shell the form sits in.
+ *
+ * When the store has uploaded artwork the form moves to one side of a split
+ * layout; without it the form simply centres. A store that never opens the
+ * setting gets a clean page rather than an empty panel where a picture was
+ * meant to be — which is why the image is optional rather than a required field
+ * with a placeholder.
+ *
+ * Nothing here sets a height. `StorefrontAuthLayout` owns the viewport and is
+ * the only scroll container on the page, so this must be free to be exactly as
+ * tall as its content.
+ */
+function AuthShell({ children }: { children: React.ReactNode }) {
+  const store = useStore();
+  const { loginImageUrl, loginMessage } = store.theme;
+
+  const form = <div className="w-full max-w-sm px-4 py-10 sm:px-6">{children}</div>;
+
+  if (!loginImageUrl) {
+    return <div className="flex min-h-full justify-center">{form}</div>;
+  }
+
+  return (
+    <div className="grid min-h-full lg:grid-cols-2">
+      {/* Artwork after the form in source order on narrow screens: a shopper on
+          a phone should reach the fields without scrolling past a photograph. */}
+      <div className="relative order-last hidden lg:order-first lg:block">
+        <img src={loginImageUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
+        <div className="absolute inset-0 bg-gradient-to-tr from-ink-950/70 via-ink-950/25 to-transparent" />
+        {loginMessage && (
+          <div className="absolute inset-x-0 bottom-0 p-10">
+            {/* Rendered as text. The API stores it as plain text for exactly
+                this reason — a shopkeeper's greeting must not become markup on
+                a page every shopper sees. */}
+            <p className="max-w-md font-display text-2xl leading-snug tracking-tight text-white">
+              {loginMessage}
+            </p>
+            <p className="mt-3 text-sm text-white/70">{store.name}</p>
+          </div>
+        )}
+      </div>
+
+      <div className="flex items-center justify-center">{form}</div>
     </div>
   );
 }
@@ -278,7 +406,7 @@ function CodeInput({ value, onChange }: { value: string; onChange: (v: string) =
         value={value}
         // Digits only, so a pasted "123 456" arrives clean.
         onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 6))}
-        className="mt-1.5 w-full rounded-card border border-ink-300 px-3 py-3 text-center text-2xl tracking-[0.4em] focus:border-brand focus:outline-none"
+        className="mt-1.5 w-full rounded-card border border-ink-200 bg-white px-3 py-3 text-center text-2xl font-semibold tracking-[0.4em] text-ink-950 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
       />
     </label>
   );
@@ -291,8 +419,17 @@ function formatClock(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`;
 }
 
+/**
+ * Colours stated, not inherited.
+ *
+ * On a dark storefront `body` is `text-ink-100`, and a control that only styles
+ * its border inherits that against the browser's white input background —
+ * near-white text on white, invisible while you type.
+ */
 const input =
-  'mt-1.5 w-full rounded-card border border-ink-300 px-3 py-2 text-sm focus:border-brand focus:outline-none';
+  'mt-1.5 w-full rounded-card border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-950 ' +
+  'transition-colors placeholder:text-ink-400 hover:border-ink-300 ' +
+  'focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (

@@ -14,6 +14,7 @@ import {
   Min,
 } from 'class-validator';
 import { DiscountType } from '@prisma/client';
+import { BooleanQuery } from '../../common/decorators/boolean-query';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';
 
 export class CreateCouponDto {
@@ -58,7 +59,10 @@ export class UpdateCouponDto {
 }
 
 export class CouponQueryDto extends PaginationQueryDto {
-  @ApiPropertyOptional() @IsOptional() @IsBoolean() isActive?: boolean;
+  // A query string carries 'true', never true, so this needs the coercing
+  // decorator rather than a bare @IsBoolean — which rejected every use of the
+  // filter with "isActive must be a boolean value".
+  @ApiPropertyOptional() @BooleanQuery() isActive?: boolean;
 }
 
 export class ApplyCouponDto {

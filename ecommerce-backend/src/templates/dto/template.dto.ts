@@ -7,11 +7,11 @@ import {
   IsIn,
   IsOptional,
   IsString,
-  IsUrl,
   Length,
   MaxLength,
   ValidateNested,
 } from 'class-validator';
+import { IsUrlOrEmpty } from '../../common/decorators/is-url-or-empty';
 import { ALLOWED_FONTS, HOMEPAGE_SECTIONS } from '../../theme/dto/theme.dto';
 import { BACKGROUND_PRESETS, LOGO_SIZES } from '../../theme/backgrounds';
 
@@ -73,7 +73,7 @@ export class CreateTemplateDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) description?: string;
 
   @ApiPropertyOptional({ description: 'Absolute URL of the gallery thumbnail' })
-  @IsOptional() @IsUrl({ require_tld: false }) previewImage?: string;
+  @IsUrlOrEmpty() previewImage?: string;
 
   @ApiPropertyOptional({ type: TemplateThemeDto })
   @IsOptional() @ValidateNested() @Type(() => TemplateThemeDto)
@@ -95,7 +95,7 @@ export class UpdateTemplateDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @Length(2, 60) name?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @Length(2, 40) category?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) description?: string;
-  @ApiPropertyOptional() @IsOptional() @IsUrl({ require_tld: false }) previewImage?: string;
+  @ApiPropertyOptional() @IsUrlOrEmpty() previewImage?: string;
 
   @ApiPropertyOptional({ type: TemplateThemeDto })
   @IsOptional() @ValidateNested() @Type(() => TemplateThemeDto)

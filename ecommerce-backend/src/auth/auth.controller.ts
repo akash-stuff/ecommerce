@@ -8,6 +8,7 @@ import {
   RefreshTokenDto,
   RegisterDto,
   ResendEmailOtpDto,
+  ResetPasswordDto,
   VerifyEmailOtpDto,
 } from './dto/auth.dto';
 
@@ -61,6 +62,31 @@ export class AuthController {
   })
   resendCustomerOtp(@Body() dto: ResendEmailOtpDto) {
     return this.auth.resendCustomerOtp(dto);
+  }
+
+  /**
+   * Starts a password reset. Always answers the same, so it cannot be used to
+   * discover which addresses have an account at this store.
+   */
+  @Public()
+  @Post('customer/forgot-password')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Email a password reset code' })
+  forgotCustomerPassword(@Body() dto: ResendEmailOtpDto) {
+    return this.auth.forgotCustomerPassword(dto);
+  }
+
+  @Public()
+  @Post('customer/reset-password')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Set a new password with the emailed code',
+    description: 'Every other session for this customer is signed out.',
+  })
+  resetCustomerPassword(@Body() dto: ResetPasswordDto) {
+    return this.auth.resetCustomerPassword(dto);
   }
 
   @Public()

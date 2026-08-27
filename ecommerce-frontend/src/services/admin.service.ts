@@ -249,3 +249,34 @@ export const inventoryService = {
     reference?: string;
   }) => unwrap<InventoryTransaction>(apiClient.post('/inventory/adjust', payload)),
 };
+
+export interface NewsletterSubscriber {
+  id: string;
+  email: string;
+  source: string;
+  unsubscribedAt: string | null;
+  createdAt: string;
+}
+
+export const subscriberService = {
+  list: (params: { page?: number; limit?: number; search?: string; subscribed?: boolean }) =>
+    paged<NewsletterSubscriber>(apiClient.get('/newsletter', { params })),
+
+  unsubscribe: (id: string) =>
+    unwrap<{ id: string; unsubscribedAt: string }>(
+      apiClient.post(`/newsletter/${id}/unsubscribe`),
+    ),
+
+  remove: (id: string) => apiClient.delete(`/newsletter/${id}`),
+
+  /**
+   * Fetched as a blob and saved from memory rather than linked to directly.
+   *
+   * The CSV route needs the bearer token, and a plain <a href> carries no
+   * Authorization header — it would land on the login page instead of a file.
+   */
+  exportCsv: async () => {
+    const response = await apiClient.get('/newsletter/export.csv', { responseType: 'blob' });
+    return response.data as Blob;
+  },
+};

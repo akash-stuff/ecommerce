@@ -16,6 +16,8 @@ export class StoreThemeDto {
   @ApiProperty({ description: 'Named background preset' }) background!: string;
   @ApiProperty({ nullable: true }) backgroundImageUrl!: string | null;
   @ApiProperty() backgroundFit!: string;
+  @ApiProperty({ nullable: true }) loginImageUrl!: string | null;
+  @ApiProperty({ nullable: true }) loginMessage!: string | null;
   @ApiProperty({ type: Object }) socialLinks!: Record<string, string>;
   @ApiProperty({ type: [String] }) homepageLayout!: string[];
 

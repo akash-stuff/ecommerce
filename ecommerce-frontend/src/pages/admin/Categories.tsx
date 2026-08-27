@@ -14,6 +14,7 @@ import {
   Textarea,
 } from '@/components/admin/Modal';
 import type { CategoryNode } from '@/types/api';
+import { toast, toastFromError } from '@/components/Toasts';
 
 interface Draft {
   id?: string;
@@ -47,6 +48,9 @@ export default function Categories() {
   };
 
   const save = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (d: Draft) => {
       const payload = {
         name: d.name,
@@ -64,8 +68,12 @@ export default function Categories() {
   });
 
   const remove = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (id: string) => categoryService.remove(id),
     onSuccess: () => {
+      toast.saved('Category deleted');
       queryClient.invalidateQueries({ queryKey: ['admin-categories'] });
       setConfirmDelete(null);
     },

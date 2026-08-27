@@ -47,6 +47,10 @@ export interface StoreTheme {
   backgroundImageUrl: string | null;
   /** 'cover' | 'tile' */
   backgroundFit: string;
+  /** Artwork beside the shopper sign-in form. Optional. */
+  loginImageUrl: string | null;
+  /** A short line of the store's own words on that page. Plain text. */
+  loginMessage: string | null;
   socialLinks: Record<string, string>;
   homepageLayout: string[];
   /** Sanitised server-side; safe to place in a <style> block. */
@@ -73,6 +77,8 @@ export interface EditableTheme {
     background: string;
     backgroundImageUrl: string | null;
     backgroundFit: string;
+    loginImageUrl: string | null;
+    loginMessage: string | null;
     socialLinks: Record<string, string>;
     homepageLayout: string[];
     customCss: string | null;

@@ -77,3 +77,23 @@ export class ResendEmailOtpDto {
   @ApiProperty({ example: 'shopper@example.com' })
   @IsEmail() email!: string;
 }
+
+/**
+ * Finishing a password reset.
+ *
+ * The password rules mirror `RegisterDto` deliberately: a reset that accepts a
+ * weaker password than registration would be the way around the policy.
+ */
+export class ResetPasswordDto {
+  @ApiProperty({ example: 'shopper@example.com' })
+  @IsEmail() email!: string;
+
+  @ApiProperty({ example: '123456', description: 'Spaces and dashes are ignored' })
+  @IsString() @Length(4, 16) code!: string;
+
+  @ApiProperty({ minLength: 8 })
+  @IsString()
+  @MinLength(8, { message: 'Use at least 8 characters.' })
+  @MaxLength(128)
+  password!: string;
+}

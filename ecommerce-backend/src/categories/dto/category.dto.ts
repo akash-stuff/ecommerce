@@ -9,6 +9,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
+import { BooleanQuery } from '../../common/decorators/boolean-query';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';
 
 export class CreateCategoryDto {
@@ -50,7 +51,7 @@ export class CategoryQueryDto extends PaginationQueryDto {
   @IsOptional() @IsUUID() parentId?: string;
 
   @ApiPropertyOptional({ description: 'Only root categories' })
-  @IsOptional() @Type(() => Boolean) @IsBoolean() rootOnly?: boolean;
+  @BooleanQuery() rootOnly?: boolean;
 
-  @ApiPropertyOptional() @IsOptional() @Type(() => Boolean) @IsBoolean() isActive?: boolean;
+  @ApiPropertyOptional() @BooleanQuery() isActive?: boolean;
 }

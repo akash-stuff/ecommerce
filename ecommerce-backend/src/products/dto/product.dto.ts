@@ -5,6 +5,7 @@ import {
   IsArray, IsBoolean, IsEnum, IsInt, IsNumber, IsOptional,
   IsString, IsUUID, MaxLength, Min, ValidateNested,
 } from 'class-validator';
+import { BooleanQuery } from '../../common/decorators/boolean-query';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';
 
 export class ProductVariantInputDto {
@@ -70,6 +71,6 @@ export class ProductQueryDto extends PaginationQueryDto {
   @IsOptional() @IsEnum(ProductStatus) status?: ProductStatus;
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() minPrice?: number;
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsNumber() maxPrice?: number;
-  @ApiPropertyOptional() @IsOptional() @Type(() => Boolean) @IsBoolean() inStock?: boolean;
-  @ApiPropertyOptional() @IsOptional() @Type(() => Boolean) @IsBoolean() featured?: boolean;
+  @ApiPropertyOptional() @BooleanQuery() inStock?: boolean;
+  @ApiPropertyOptional() @BooleanQuery() featured?: boolean;
 }

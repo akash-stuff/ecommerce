@@ -7,6 +7,7 @@ import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { StatusBadge } from '@/components/admin/DataTable';
 import { Field, FormError, Input, Modal, Textarea } from '@/components/admin/Modal';
 import { formatMoney } from '@/utils/format';
+import { toast, toastFromError } from '@/components/Toasts';
 
 /**
  * Mirrors the server's transition table. The server is still the authority — it
@@ -56,13 +57,20 @@ export default function OrderDetail() {
   };
 
   const advance = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (status: string) => orderService.setStatus(id!, status),
     onSuccess: invalidate,
   });
 
   const cancel = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: () => orderService.setStatus(id!, 'CANCELLED', reason || undefined),
     onSuccess: () => {
+      toast.saved('Order cancelled');
       setCancelling(false);
       setReason('');
       invalidate();
@@ -96,6 +104,9 @@ export default function OrderDetail() {
   });
 
   const collect = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: () => orderService.markCollected(id!),
     onSuccess: invalidate,
   });

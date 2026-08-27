@@ -9,6 +9,7 @@ import { useCustomerStore } from '@/store/customer.store';
 import { categoryService } from '@/services/admin.service';
 import { bannerService } from '@/services/store.service';
 import { BannerLink } from '@/components/BannerLink';
+import { Toaster } from '@/components/Toasts';
 import { apiClient, unwrap } from '@/services/api-client';
 
 /**
@@ -83,6 +84,7 @@ export function StorefrontLayout() {
 
   return (
     <div className="flex min-h-screen flex-col">
+      <Toaster />
       {announcement && (
         // Above the sticky header, so it scrolls away instead of permanently
         // eating vertical space on a phone.

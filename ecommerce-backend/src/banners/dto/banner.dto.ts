@@ -7,10 +7,10 @@ import {
   IsInt,
   IsOptional,
   IsString,
-  IsUrl,
   MaxLength,
   Min,
 } from 'class-validator';
+import { IsUrlOrEmpty } from '../../common/decorators/is-url-or-empty';
 
 /**
  * Where a banner appears. Closed, and short on purpose: every value here is a
@@ -27,7 +27,7 @@ export class CreateBannerDto {
 
   /** Required for HOME_HERO, optional for a text-only strip. See the service. */
   @ApiPropertyOptional({ description: 'Absolute URL of the image' })
-  @IsOptional() @IsUrl({ require_tld: false }) imageUrl?: string;
+  @IsUrlOrEmpty() imageUrl?: string;
 
   @ApiPropertyOptional({ description: 'Where clicking it goes. Relative paths allowed.' })
   @IsOptional() @IsString() @MaxLength(500) linkUrl?: string;
@@ -50,7 +50,7 @@ export class CreateBannerDto {
 export class UpdateBannerDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) title?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) subtitle?: string;
-  @ApiPropertyOptional() @IsOptional() @IsUrl({ require_tld: false }) imageUrl?: string;
+  @ApiPropertyOptional() @IsUrlOrEmpty() imageUrl?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) linkUrl?: string;
 
   @ApiPropertyOptional({ enum: BANNER_PLACEMENTS })

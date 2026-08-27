@@ -1,13 +1,11 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { Transform } from 'class-transformer';
 import { IsBoolean, IsOptional, IsString, MaxLength } from 'class-validator';
+import { BooleanQuery } from '../../common/decorators/boolean-query';
 import { PaginationQueryDto } from '../../common/dto/pagination.dto';
 
 export class CustomerQueryDto extends PaginationQueryDto {
   @ApiPropertyOptional({ description: 'Only customers who have ordered' })
-  @IsOptional()
-  @Transform(({ value }) => value === true || value === 'true')
-  @IsBoolean()
+  @BooleanQuery()
   hasOrdered?: boolean;
 }
 

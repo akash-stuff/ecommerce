@@ -5,6 +5,7 @@ import { apiClient, unwrap } from '@/services/api-client';
 import { Page } from '@/components/admin/Page';
 import { DataTable, StatusBadge, type Column } from '@/components/admin/DataTable';
 import type { PaginationMeta } from '@/types/api';
+import { toast, toastFromError } from '@/components/Toasts';
 
 interface ReviewRow {
   id: string;
@@ -39,9 +40,13 @@ export default function Reviews() {
   });
 
   const moderate = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (args: { id: string; status: string }) =>
       unwrap(apiClient.patch(`/reviews/${args.id}`, { status: args.status })),
     onSuccess: () => {
+      toast.saved('Review moderated');
       queryClient.invalidateQueries({ queryKey: ['admin-reviews'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },

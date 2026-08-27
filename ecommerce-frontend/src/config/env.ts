@@ -32,7 +32,23 @@ export const env = {
   platformDomain: import.meta.env.VITE_STORE_DOMAIN ?? 'platform.localhost',
 } as const;
 
-/** True when running on the admin console rather than a storefront. */
+/** The platform console never tries to resolve itself as a tenant. */
+export function isPlatformHost(hostname = window.location.hostname): boolean {
+  return hostname === `admin.${env.platformDomain}` || hostname.startsWith('admin.');
+}
+
+/** The bare development address is a useful store picker, not a fake store. */
+export function isDevelopmentHost(hostname = window.location.hostname): boolean {
+  return hostname === 'localhost' || hostname === env.platformDomain;
+}
+
+/** True when running a staff console rather than a customer storefront. */
 export function isAdminHost(hostname = window.location.hostname): boolean {
-  return hostname === 'localhost' || hostname.startsWith('admin.');
+  return isDevelopmentHost(hostname) || isPlatformHost(hostname);
+}
+
+/** Keep the current dev port when opening a tenant from the platform console. */
+export function tenantUrl(slug: string): string {
+  const port = window.location.port ? `:${window.location.port}` : '';
+  return `${window.location.protocol}//${slug}.${env.platformDomain}${port}`;
 }

@@ -6,6 +6,7 @@ import { DataTable, StatusBadge, type Column } from '@/components/admin/DataTabl
 import { Field, FormError, FormGrid, Input, Modal, Select } from '@/components/admin/Modal';
 import { formatMoney } from '@/utils/format';
 import type { Coupon } from '@/types/api';
+import { toast, toastFromError } from '@/components/Toasts';
 
 interface Draft {
   id?: string;
@@ -51,6 +52,9 @@ export default function Coupons() {
   };
 
   const save = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (d: Draft) => {
       const payload = {
         discountValue: num(d.discountValue),
@@ -64,7 +68,10 @@ export default function Coupons() {
         ? couponService.update(d.id, payload)
         : couponService.create({ ...payload, code: d.code, discountType: d.discountType });
     },
-    onSuccess: refresh,
+    onSuccess: () => {
+      toast.saved('Coupon saved');
+      refresh();
+    },
   });
 
   const deactivate = useMutation({

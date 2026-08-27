@@ -21,6 +21,7 @@ import {
   LoginDto,
   RegisterDto,
   ResendEmailOtpDto,
+  ResetPasswordDto,
   VerifyEmailOtpDto,
 } from './dto/auth.dto';
 import { EmailOtpService, OTP_TTL_SECONDS } from './email-otp.service';
@@ -30,6 +31,9 @@ import { EmailOtpService, OTP_TTL_SECONDS } from './email-otp.service';
  * complete a registration or the other way round.
  */
 const OTP_PURPOSE_REGISTER = 'customer.register';
+
+/** A reset code must not be spendable as a registration, or the reverse. */
+const OTP_PURPOSE_RESET = 'customer.reset';
 
 export type CurrentActor =
   | {
@@ -350,6 +354,121 @@ export class AuthService {
     });
 
     return { sent: true };
+  }
+
+  /**
+   * Step one of a password reset: prove the address is readable.
+   *
+   * Always reports success, whether or not an account exists. The alternative
+   * turns this endpoint into a way to test which email addresses shop at a
+   * given store, which is exactly the list a phisher wants — and the shopper
+   * who typed a typo learns nothing useful from "no such account" anyway.
+   */
+  async forgotCustomerPassword(dto: ResendEmailOtpDto): Promise<{ sent: true }> {
+    const tenantId = RequestContextStore.requireTenantId();
+    const email = dto.email.toLowerCase();
+
+    const customer = await this.prisma.db.customer.findFirst({
+      where: { email },
+      select: { id: true, isActive: true },
+    });
+
+    // A deactivated account is treated as absent: reactivating it is the
+    // shopkeeper's decision, not something a password reset should route around.
+    if (!customer || !customer.isActive) return { sent: true };
+
+    const { code } = await this.otp.issue(email, OTP_PURPOSE_RESET, { customerId: customer.id });
+
+    const store = await this.prisma.db.store.findFirst({
+      select: { name: true, email: true },
+    });
+
+    try {
+      await this.notifications.passwordResetCode(email, tenantId, {
+        storeName: store?.name ?? 'The store',
+        storeEmail: store?.email ?? email,
+        code,
+        expiresInMinutes: Math.round(OTP_TTL_SECONDS / 60),
+      });
+    } catch (error) {
+      // The challenge is dropped so a shopper who retries is not blocked by the
+      // cooldown on a code that was never delivered.
+      await this.otp.forget(email, OTP_PURPOSE_RESET);
+      this.logger.error(`Could not send reset code: ${(error as Error).message}`);
+    }
+
+    return { sent: true };
+  }
+
+  /**
+   * Step two: the code is right, so the password changes.
+   *
+   * Every other session is ended. Someone resetting a password is often doing
+   * it *because* they think someone else has it, and leaving the old refresh
+   * tokens alive would make the reset cosmetic.
+   */
+  async resetCustomerPassword(dto: ResetPasswordDto): Promise<TokenPair> {
+    const tenantId = RequestContextStore.requireTenantId();
+    const email = dto.email.toLowerCase();
+
+    const pending = await this.otp.consume(
+      email,
+      OTP_PURPOSE_RESET,
+      dto.code.replace(/[\s-]/g, ''),
+    );
+
+    const customerId = pending?.customerId as string | undefined;
+    if (!customerId) {
+      throw new BadRequestException({
+        message: 'That code is not valid or has expired. Request a new one.',
+        code: 'OTP_INVALID',
+      });
+    }
+
+    // Re-read rather than trusting the id the challenge carried: the account
+    // could have been deactivated in the ten minutes since the code was sent.
+    const customer = await this.prisma.db.customer.findFirst({
+      where: { id: customerId },
+      select: { id: true, email: true, isActive: true },
+    });
+
+    if (!customer || !customer.isActive) {
+      await this.otp.forget(email, OTP_PURPOSE_RESET);
+      throw new UnauthorizedException({
+        message: 'That account is not available.',
+        code: 'ACCOUNT_UNAVAILABLE',
+      });
+    }
+
+    await this.prisma.db.customer.update({
+      where: { id: customer.id },
+      data: {
+        passwordHash: await this.hash(dto.password),
+        // Resetting through an emailed code proves the address, so an account
+        // that predates verification becomes verified here.
+        emailVerifiedAt: new Date(),
+      },
+    });
+
+    await this.otp.forget(email, OTP_PURPOSE_RESET);
+
+    // Unscoped: revocation must reach every session this customer has, and the
+    // token rows are outside tenant scoping by design.
+    await this.prisma.runUnscoped((db) =>
+      db.refreshToken.updateMany({
+        where: { customerId: customer.id, revokedAt: null },
+        data: { revokedAt: new Date() },
+      }),
+    );
+
+    return this.issueTokens({
+      sub: customer.id,
+      cid: customer.id,
+      email: customer.email,
+      role: SystemRole.CUSTOMER,
+      tid: tenantId,
+      permissions: [],
+    });
   }
 
   async loginCustomer(dto: LoginDto): Promise<TokenPair> {

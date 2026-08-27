@@ -1,4 +1,10 @@
-import { ConflictException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { SystemRole, TenantStatus } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { ConfigService } from '@nestjs/config';
@@ -296,6 +302,86 @@ export class TenantsService {
       });
 
       return updated;
+    });
+  }
+
+  /**
+   * Deletes a store and everything under it, permanently.
+   *
+   * The rows go because every tenant-owned table cascades from `Tenant`
+   * (`onDelete: Cascade` throughout the schema) — orders, customers, products,
+   * payments, the lot. That is the point of the operation and also why it is
+   * guarded rather than offered next to Suspend: suspension is reversible and
+   * this is not.
+   *
+   * Two protections, deliberately different in kind:
+   *
+   * 1. The caller must type the slug back. A destructive action reached by one
+   *    click on a list row is a destructive action taken by accident.
+   * 2. A store that has taken money cannot be deleted at all. Order and payment
+   *    records are what a merchant answers a chargeback or a tax question with;
+   *    the platform does not get to destroy them because someone tidied up.
+   *    Such a store is cancelled instead, which stops it trading and keeps the
+   *    history.
+   */
+  async remove(id: string, confirmSlug: string) {
+    return this.prisma.runUnscoped(async (db) => {
+      const tenant = await this.assertExists(db, id);
+
+      if (confirmSlug !== tenant.slug) {
+        throw new BadRequestException({
+          message: `Type "${tenant.slug}" to confirm you mean to delete this store.`,
+          code: 'TENANT_DELETE_UNCONFIRMED',
+        });
+      }
+
+      const orders = await db.order.count({ where: { tenantId: id } });
+      if (orders > 0) {
+        throw new ConflictException({
+          message:
+            `${tenant.businessName} has ${orders} order${orders === 1 ? '' : 's'}. ` +
+            'A store that has taken money keeps its records — cancel it instead, ' +
+            'which stops it trading and leaves the history intact.',
+          code: 'TENANT_HAS_ORDERS',
+        });
+      }
+
+      const domains = await db.domain.findMany({
+        where: { tenantId: id },
+        select: { hostname: true },
+      });
+
+      /**
+       * Recorded *before* the delete, not after.
+       *
+       * `AuditLog.tenantId` is nullable and the row must survive the tenant it
+       * describes, so the entry is written while the tenant still exists — and
+       * then detached, because a cascade would take the evidence with it.
+       */
+      await this.audit.record({
+        action: 'tenant.deleted',
+        entityType: 'Tenant',
+        entityId: id,
+        // No tenantId: the row it would point at is about to stop existing.
+        changes: {
+          slug: tenant.slug,
+          businessName: tenant.businessName,
+          status: tenant.status,
+          hostnames: domains.map((d) => d.hostname),
+        },
+      });
+
+      await db.tenant.delete({ where: { id } });
+
+      // The hostname cache still maps these to a tenant that is gone; clearing
+      // it is what makes the storefront stop resolving immediately.
+      await this.resolver.invalidate(domains.map((d) => d.hostname));
+
+      this.logger.warn(
+        `Deleted store ${tenant.slug} (${tenant.businessName}) and all of its data.`,
+      );
+
+      return { deleted: true, slug: tenant.slug };
     });
   }
 

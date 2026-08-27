@@ -58,3 +58,15 @@ export const productService = {
   update: (id: string, payload: unknown) => unwrap<Product>(apiClient.put(`/products/${id}`, payload)),
   remove: (id: string) => apiClient.delete(`/products/${id}`),
 };
+
+/**
+ * The storefront mailing-list panel.
+ *
+ * The reply is the same for a new address, a repeat and one that had opted out —
+ * the server deliberately does not say which, so the form cannot be used to
+ * test whether a given person shops here.
+ */
+export const newsletterService = {
+  subscribe: (email: string) =>
+    unwrap<{ subscribed: true }>(apiClient.post('/newsletter/subscribe', { email })),
+};

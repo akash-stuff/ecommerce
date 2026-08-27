@@ -1,7 +1,8 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { ArrowRight } from 'lucide-react';
-import { bannerService, productService } from '@/services/store.service';
+import { useMutation, useQuery } from '@tanstack/react-query';
+import { AlertTriangle, ArrowRight, Check, Loader2 } from 'lucide-react';
+import { bannerService, newsletterService, productService } from '@/services/store.service';
 import { BannerLink } from '@/components/BannerLink';
 import { categoryService } from '@/services/admin.service';
 import { useStore } from '@/features/theme/ThemeProvider';
@@ -242,11 +243,21 @@ function Categories() {
 }
 
 /**
- * Collects an address only. Nothing is wired to a mailing list yet, so it says
- * what will actually happen rather than implying a subscription exists.
+ * The mailing-list panel.
+ *
+ * On success the form is replaced by a confirmation rather than a corner toast:
+ * the panel is what the shopper is looking at, and leaving a filled-in box
+ * behind invites a second submission. The reply is identical for a new address,
+ * a repeat and one that had opted out — the server will not say which, so this
+ * cannot be used to test whether someone shops here.
  */
 function Newsletter() {
   const store = useStore();
+  const [email, setEmail] = useState('');
+
+  const subscribe = useMutation({
+    mutationFn: () => newsletterService.subscribe(email),
+  });
 
   return (
     <section className={`${SHELL} ${BLOCK}`}>
@@ -259,36 +270,69 @@ function Newsletter() {
           <h2 className="font-display text-2xl tracking-tight text-white sm:text-4xl">
             Hear from {store.name}
           </h2>
-          <p className="mt-3 text-sm text-white/80 sm:text-base">
-            Leave your email and the store will be in touch about new arrivals.
-          </p>
 
-          <form
-            onSubmit={(e) => e.preventDefault()}
-            className="mx-auto mt-8 flex max-w-md flex-col gap-2 sm:flex-row"
-          >
-            <label htmlFor="newsletter-email" className="sr-only">
-              Email address
-            </label>
-            <input
-              id="newsletter-email"
-              type="email"
-              required
-              placeholder="you@example.com"
-              className="min-w-0 flex-1 rounded-full border border-white/25 bg-white/10 px-5 py-3 text-sm text-white placeholder:text-white/60 focus:border-white focus:outline-none"
-            />
-            <button
-              type="submit"
-              disabled
-              title="Mailing list signup is not connected yet"
-              className="rounded-full bg-white px-6 py-3 text-sm font-medium text-ink-950 disabled:opacity-50"
-            >
-              Notify me
-            </button>
-          </form>
-          <p className="mt-3 text-xs text-white/60">
-            Signups are not connected to a mailing list yet.
-          </p>
+          {subscribe.isSuccess ? (
+            /* `role="status"` so the swap is announced; the heading above stays
+               put, so a screen reader is not left wondering what changed. */
+            <div role="status" className="mt-4">
+              <p className="inline-flex items-center gap-2 rounded-full bg-white/15 px-4 py-2 text-sm text-white backdrop-blur">
+                <Check size={15} className="shrink-0" />
+                You are on the list — check your inbox.
+              </p>
+            </div>
+          ) : (
+            <>
+              <p className="mt-3 text-sm text-white/80 sm:text-base">
+                Leave your email and the store will be in touch about new arrivals.
+              </p>
+
+              <form
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  if (!subscribe.isPending) subscribe.mutate();
+                }}
+                className="mx-auto mt-8 flex max-w-md flex-col gap-2 sm:flex-row"
+              >
+                <label htmlFor="newsletter-email" className="sr-only">
+                  Email address
+                </label>
+                <input
+                  id="newsletter-email"
+                  type="email"
+                  required
+                  value={email}
+                  disabled={subscribe.isPending}
+                  autoComplete="email"
+                  placeholder="you@example.com"
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="min-w-0 flex-1 rounded-full border border-white/25 bg-white/10 px-5 py-3 text-sm text-white placeholder:text-white/60 focus:border-white focus:outline-none disabled:opacity-60"
+                />
+                <button
+                  type="submit"
+                  disabled={subscribe.isPending}
+                  className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-50"
+                >
+                  {subscribe.isPending && <Loader2 size={14} className="animate-spin" />}
+                  {subscribe.isPending ? 'Adding you…' : 'Notify me'}
+                </button>
+              </form>
+
+              {/* Inline rather than a toast, for the same reason as the
+                  confirmation: the answer belongs next to the field. */}
+              {subscribe.isError && (
+                <p
+                  role="alert"
+                  className="mx-auto mt-4 inline-flex max-w-md items-start gap-2 rounded-2xl bg-black/25 px-4 py-2 text-left text-sm text-white backdrop-blur"
+                >
+                  <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+                  <span>
+                    {(subscribe.error as { message?: string } | null)?.message ??
+                      'That did not go through. Try again in a moment.'}
+                  </span>
+                </p>
+              )}
+            </>
+          )}
         </div>
       </div>
     </section>

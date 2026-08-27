@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Building2, CreditCard, LayoutDashboard, LayoutTemplate, LogOut, Menu,
+  Building2, CreditCard, LayoutDashboard, LayoutTemplate, LogOut, Mail, Menu,
   ScrollText, X,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
+import { Toaster } from '@/components/Toasts';
 
 const NAV = [
   { to: '/platform', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/platform/tenants', label: 'Stores', icon: Building2 },
   { to: '/platform/plans', label: 'Plans', icon: CreditCard },
   { to: '/platform/templates', label: 'Templates', icon: LayoutTemplate },
+  { to: '/platform/notifications', label: 'Notifications', icon: Mail },
   { to: '/platform/audit', label: 'Audit log', icon: ScrollText },
 ];
 
@@ -91,6 +93,7 @@ export function PlatformLayout() {
 
   return (
     <div className="admin-chrome flex min-h-screen bg-ink-50">
+      <Toaster />
       <aside className="sticky top-0 hidden h-screen w-56 shrink-0 flex-col border-r border-ink-800 bg-ink-950 lg:flex">
         {sidebar}
       </aside>

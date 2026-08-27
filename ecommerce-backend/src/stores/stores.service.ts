@@ -80,6 +80,8 @@ type ThemeRow = {
   background: string;
   backgroundImageUrl: string | null;
   backgroundFit: string;
+  loginImageUrl: string | null;
+  loginMessage: string | null;
   socialLinks: unknown;
   homepageLayout: unknown;
   customCss: string | null;
@@ -109,6 +111,8 @@ function toThemeDto(theme: ThemeRow): StoreThemeDto {
     background: oneOf(theme?.background, BACKGROUND_PRESETS, DEFAULT_BACKGROUND),
     backgroundImageUrl: theme?.backgroundImageUrl ?? null,
     backgroundFit: oneOf(theme?.backgroundFit, BACKGROUND_FITS, 'cover'),
+    loginImageUrl: theme?.loginImageUrl ?? null,
+    loginMessage: theme?.loginMessage ?? null,
     socialLinks: asStringMap(theme?.socialLinks),
     homepageLayout: asStringArray(theme?.homepageLayout),
     customCss: safeCustomCss(theme?.customCss),

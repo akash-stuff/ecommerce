@@ -6,6 +6,7 @@ import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { StatusBadge } from '@/components/admin/DataTable';
 import { Field, FormError, FormGrid, Input, Select, Textarea } from '@/components/admin/Modal';
 import type { EditableTheme } from '@/types/api';
+import { toast, toastFromError } from '@/components/Toasts';
 
 interface DomainRow {
   id: string;
@@ -54,6 +55,9 @@ export default function Settings() {
   }, [store.data]);
 
   const save = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: () =>
       unwrap(
         apiClient.put('/theme/storefront', {
@@ -64,7 +68,10 @@ export default function Settings() {
           isPublished: draft.isPublished,
         }),
       ),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-theme'] }),
+    onSuccess: () => {
+      toast.saved('Settings saved');
+      queryClient.invalidateQueries({ queryKey: ['admin-theme'] });
+    },
   });
 
   if (store.isLoading) {
@@ -138,7 +145,6 @@ export default function Settings() {
           <PrimaryButton disabled={save.isPending} onClick={() => save.mutate()}>
             {save.isPending ? 'Saving…' : 'Save changes'}
           </PrimaryButton>
-          {save.isSuccess && <span className="text-sm text-green-700">Saved</span>}
         </div>
 
         <Domains />

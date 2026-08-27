@@ -22,6 +22,8 @@ interface CustomerState {
   }) => Promise<{ email: string; expiresInSeconds: number; resendInSeconds: number }>;
   /** Confirms the emailed code, creating the account and signing in. */
   verifyEmail: (email: string, code: string) => Promise<void>;
+  /** Sets a new password with an emailed code, and signs in with it. */
+  resetPassword: (email: string, code: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   hydrate: () => Promise<void>;
 }
@@ -58,6 +60,21 @@ export const useCustomerStore = create<CustomerState>()((set) => ({
       // claiming otherwise would let the rest of the app act as if signed in.
       set({ customer: null, status: 'guest' });
       return challenge;
+    } catch (e) {
+      set({ customer: null, status: 'guest' });
+      throw e;
+    }
+  },
+
+  resetPassword: async (email, code, password) => {
+    set({ status: 'loading' });
+    try {
+      await customerService.resetPassword(email, code, password);
+      // Same follow-through as a sign-in: the guest cart is folded in and the
+      // customer-scoped caches are dropped before the profile is read.
+      await cartService.merge().catch(() => undefined);
+      clearCustomerScopedQueries();
+      set({ customer: await customerService.me(), status: 'authenticated' });
     } catch (e) {
       set({ customer: null, status: 'guest' });
       throw e;

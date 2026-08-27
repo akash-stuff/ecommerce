@@ -5,6 +5,7 @@ import { apiClient, unwrap } from '@/services/api-client';
 import { Page, SecondaryButton } from '@/components/admin/Page';
 import { DataTable, StatusBadge, type Column } from '@/components/admin/DataTable';
 import type { PaginationMeta } from '@/types/api';
+import { toast, toastFromError } from '@/components/Toasts';
 
 interface NotificationRow {
   id: string;
@@ -42,9 +43,15 @@ export default function Notifications() {
   });
 
   const retry = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: () =>
       unwrap<{ attempted: number; sent: number }>(apiClient.post('/notifications/retry', {})),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['notifications'] }),
+    onSuccess: () => {
+      toast.saved('Retrying delivery');
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    },
   });
 
   const columns: Column<NotificationRow>[] = [

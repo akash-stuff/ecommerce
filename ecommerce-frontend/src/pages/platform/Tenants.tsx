@@ -1,10 +1,13 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { AlertTriangle, Trash2 } from 'lucide-react';
 import { platformService, type PlatformTenant } from '@/services/platform.service';
 import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { DataTable, StatusBadge, type Column } from '@/components/admin/DataTable';
 import { Field, FormError, FormGrid, Input, Modal, Select, Textarea } from '@/components/admin/Modal';
+import { toast, toastFromError } from '@/components/Toasts';
+import { env } from '@/config/env';
 
 const STATUSES = ['PENDING', 'ACTIVE', 'SUSPENDED', 'CANCELLED'];
 
@@ -21,6 +24,22 @@ interface NewTenant {
   ownerPassword: string;
   planId: string;
   templateId: string;
+}
+
+/**
+ * What the platform may change about a store after it exists.
+ *
+ * Slug is absent on purpose: it is baked into the store's hostname, its stored
+ * `Domain` rows and every link anyone has saved, so renaming it is a migration
+ * rather than an edit. Shown read-only in the form so the operator can see
+ * which store they are editing.
+ */
+interface EditTenant {
+  id: string;
+  slug: string;
+  businessName: string;
+  contactEmail: string;
+  contactPhone: string;
 }
 
 const blank: NewTenant = {
@@ -42,9 +61,30 @@ export default function Tenants() {
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState<NewTenant | null>(null);
   const [suspending, setSuspending] = useState<PlatformTenant | null>(null);
+  const [editing, setEditing] = useState<EditTenant | null>(null);
+  const [deleting, setDeleting] = useState<PlatformTenant | null>(null);
+  // Typed back to confirm a delete. Kept out of `deleting` so closing the
+  // dialog and reopening it does not carry a half-typed slug forward.
+  const [confirmSlug, setConfirmSlug] = useState('');
   const [reason, setReason] = useState('');
 
   const status = params.get('status') ?? '';
+
+  /**
+   * `?new=1` opens the create form.
+   *
+   * The Overview links here to add a store, and a link that lands on a list the
+   * reader then has to find a button on is a link that did half its job. The
+   * parameter is consumed on arrival so a refresh does not reopen the form over
+   * whatever the user did next.
+   */
+  useEffect(() => {
+    if (params.get('new') === null) return;
+    setCreating(blank);
+    const next = new URLSearchParams(params);
+    next.delete('new');
+    setParams(next, { replace: true });
+  }, [params, setParams]);
 
   const query = useQuery({
     queryKey: ['platform-tenants', page, search, status],
@@ -72,6 +112,9 @@ export default function Tenants() {
   };
 
   const create = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (t: NewTenant) =>
       platformService.createTenant({
         businessName: t.businessName,
@@ -85,14 +128,47 @@ export default function Tenants() {
         templateId: t.templateId || undefined,
       }),
     onSuccess: () => {
+      toast.saved('Store created');
       setCreating(null);
       refresh();
     },
   });
 
+  const save = useMutation({
+    onError: (e) => toastFromError(e),
+    mutationFn: (t: EditTenant) =>
+      platformService.updateTenant(t.id, {
+        businessName: t.businessName,
+        contactEmail: t.contactEmail,
+        contactPhone: t.contactPhone || undefined,
+      }),
+    onSuccess: () => {
+      toast.saved('Store updated');
+      queryClient.invalidateQueries({ queryKey: ['platform-tenants'] });
+      setEditing(null);
+    },
+  });
+
+  const remove = useMutation({
+    onError: (e) => toastFromError(e),
+    mutationFn: ({ id, slug }: { id: string; slug: string }) =>
+      platformService.deleteTenant(id, slug),
+    onSuccess: (result) => {
+      toast.saved(`${result.slug} deleted`, 'The store and all of its data are gone.');
+      queryClient.invalidateQueries({ queryKey: ['platform-tenants'] });
+      queryClient.invalidateQueries({ queryKey: ['platform-overview'] });
+      setDeleting(null);
+      setConfirmSlug('');
+    },
+  });
+
   const suspend = useMutation({
+    // Failures pop in the corner like everything else, so a
+    // rejected save cannot be mistaken for a quiet success.
+    onError: (e) => toastFromError(e),
     mutationFn: (id: string) => platformService.suspendTenant(id, reason),
     onSuccess: () => {
+      toast.saved('Store suspended');
       setSuspending(null);
       setReason('');
       refresh();
@@ -145,13 +221,34 @@ export default function Tenants() {
     {
       header: '',
       cell: (t) => (
-        <span className="flex justify-end gap-3">
+        <span className="flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={() =>
+              setEditing({
+                id: t.id,
+                slug: t.slug,
+                businessName: t.businessName,
+                contactEmail: t.contactEmail ?? '',
+                contactPhone: t.contactPhone ?? '',
+              })
+            }
+            className="text-xs underline"
+          >
+            Edit
+          </button>
+
           {t.status === 'ACTIVE' ? (
-            <button onClick={() => setSuspending(t)} className="text-xs text-red-600 underline">
+            <button
+              type="button"
+              onClick={() => setSuspending(t)}
+              className="text-xs text-amber-700 underline"
+            >
               Suspend
             </button>
           ) : (
             <button
+              type="button"
               onClick={() => activate.mutate(t.id)}
               disabled={activate.isPending}
               className="text-xs underline"
@@ -159,6 +256,20 @@ export default function Tenants() {
               Activate
             </button>
           )}
+
+          {/* Last, and the only red one. Suspension is the reversible action
+              and should be the easier one to reach. */}
+          <button
+            type="button"
+            onClick={() => {
+              setDeleting(t);
+              setConfirmSlug('');
+            }}
+            aria-label={`Delete ${t.businessName}`}
+            className="rounded p-1 text-ink-400 transition-colors hover:bg-red-50 hover:text-red-600"
+          >
+            <Trash2 size={14} />
+          </button>
         </span>
       ),
       className: 'text-right',
@@ -347,6 +458,143 @@ export default function Tenants() {
           </p>
 
           <FormError error={create.error} />
+        </Modal>
+      )}
+
+      {editing && (
+        <Modal
+          title={`Edit ${editing.businessName}`}
+          description="Who the platform contacts about this store."
+          onClose={() => setEditing(null)}
+          footer={
+            <>
+              <SecondaryButton onClick={() => setEditing(null)}>Cancel</SecondaryButton>
+              <PrimaryButton
+                disabled={save.isPending || !editing.businessName || !editing.contactEmail}
+                onClick={() => save.mutate(editing)}
+              >
+                {save.isPending ? 'Saving…' : 'Save changes'}
+              </PrimaryButton>
+            </>
+          }
+        >
+          <FormGrid>
+            <Field label="Business name" wide>
+              <Input
+                value={editing.businessName}
+                onChange={(e) => setEditing({ ...editing, businessName: e.target.value })}
+              />
+            </Field>
+
+            <Field
+              label="Address"
+              hint="Baked into the hostname and every saved link — changing it would be a migration, not an edit."
+              wide
+            >
+              <Input value={`${editing.slug}.${env.platformDomain}`} disabled readOnly />
+            </Field>
+
+            <Field label="Contact email">
+              <Input
+                type="email"
+                value={editing.contactEmail}
+                onChange={(e) => setEditing({ ...editing, contactEmail: e.target.value })}
+              />
+            </Field>
+
+            <Field label="Contact phone (optional)">
+              <Input
+                value={editing.contactPhone}
+                onChange={(e) => setEditing({ ...editing, contactPhone: e.target.value })}
+              />
+            </Field>
+          </FormGrid>
+
+          <p className="mt-4 text-xs text-ink-500">
+            Branding, products and payments belong to the store owner and are changed from their
+            own admin, not here.
+          </p>
+
+          <FormError error={save.error} />
+        </Modal>
+      )}
+
+      {deleting && (
+        <Modal
+          title={`Delete ${deleting.businessName}?`}
+          onClose={() => {
+            setDeleting(null);
+            setConfirmSlug('');
+          }}
+          footer={
+            <>
+              <SecondaryButton
+                onClick={() => {
+                  setDeleting(null);
+                  setConfirmSlug('');
+                }}
+              >
+                Keep it
+              </SecondaryButton>
+              <button
+                type="button"
+                // Enabled only once the slug matches. The API checks this too —
+                // this half is so the button cannot be clicked by reflex.
+                disabled={
+                  remove.isPending ||
+                  confirmSlug !== deleting.slug ||
+                  (deleting._count?.orders ?? 0) > 0
+                }
+                onClick={() => remove.mutate({ id: deleting.id, slug: confirmSlug })}
+                className="inline-flex h-9 items-center rounded-card bg-red-600 px-4 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:pointer-events-none disabled:opacity-40"
+              >
+                {remove.isPending ? 'Deleting…' : 'Delete permanently'}
+              </button>
+            </>
+          }
+        >
+          <div className="flex items-start gap-3 rounded-card border border-red-100 bg-red-50 px-4 py-3">
+            <AlertTriangle size={16} className="mt-0.5 shrink-0 text-red-700" />
+            <p className="text-sm text-red-800">
+              This deletes the store and everything under it — products, customers, orders,
+              payments and its storefront address. It cannot be undone.
+            </p>
+          </div>
+
+          {/* Said before the slug is typed, not after the request comes back:
+              the operator should know this store cannot be deleted while they
+              still have the option of suspending it instead. */}
+          {(deleting._count?.orders ?? 0) > 0 ? (
+            <p className="mt-4 rounded-card border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              This store has {deleting._count?.orders} order
+              {deleting._count?.orders === 1 ? '' : 's'}, so the platform will refuse to delete it.
+              Those records are what a merchant answers a chargeback or a tax question with.
+              Suspend it instead — that stops it trading and keeps the history.
+            </p>
+          ) : (
+            <p className="mt-4 text-sm text-ink-700">
+              This store has taken no orders, so there is no sales history to lose.
+            </p>
+          )}
+
+          <div className="mt-5">
+            <Field
+              label={`Type ${deleting.slug} to confirm`}
+              hint="So a destructive action is never one stray click away."
+            >
+              <Input
+                value={confirmSlug}
+                autoFocus
+                spellCheck={false}
+                autoComplete="off"
+                placeholder={deleting.slug}
+                onChange={(e) => setConfirmSlug(e.target.value)}
+                className="font-mono"
+              />
+            </Field>
+          </div>
+
+          <FormError error={remove.error} />
         </Modal>
       )}
 
