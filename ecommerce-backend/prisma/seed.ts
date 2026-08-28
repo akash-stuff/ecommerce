@@ -8,7 +8,7 @@
  */
 import { PrismaClient, ProductStatus, SystemRole, TenantStatus } from '@prisma/client';
 import * as argon2 from 'argon2';
-import { templateLook } from '../src/theme/template-look';
+import { templateLook } from '../dist/theme/template-look';
 
 const prisma = new PrismaClient();
 const PLATFORM_DOMAIN = process.env.PLATFORM_DOMAIN ?? 'platform.localhost';
