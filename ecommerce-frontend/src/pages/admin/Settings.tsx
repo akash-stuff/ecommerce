@@ -2,6 +2,10 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, RefreshCw, Trash2 } from 'lucide-react';
 import { apiClient, unwrap } from '@/services/api-client';
+import {
+  domainStatusMessage,
+  type DomainVerifyResult,
+} from '@/features/domains/status-message';
 import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { StatusBadge } from '@/components/admin/DataTable';
 import { Field, FormError, FormGrid, Input, Select, Textarea } from '@/components/admin/Modal';
@@ -185,17 +189,9 @@ function Domains() {
 
   const verify = useMutation({
     mutationFn: (id: string) =>
-      unwrap<{ verified: boolean; pointsHere: boolean; message?: string }>(
-        apiClient.post(`/domains/${id}/verify`, {}),
-      ),
+      unwrap<DomainVerifyResult>(apiClient.post(`/domains/${id}/verify`, {})),
     onSuccess: (result) => {
-      setVerifyResult(
-        result.verified
-          ? result.pointsHere
-            ? 'Verified. HTTPS will be ready within a minute.'
-            : 'Verified. Your DNS record still needs to point here before the site loads.'
-          : (result.message ?? 'Not verified yet.'),
-      );
+      setVerifyResult(domainStatusMessage(result));
       refresh();
     },
   });

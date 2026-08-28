@@ -104,7 +104,7 @@ export class DomainsService {
     const domain = await this.findOne(id);
 
     if (domain.status === DomainStatus.ACTIVE) {
-      return { status: domain.status, verified: true, pointsHere: await this.pointsHere(domain.hostname) };
+      return { status: domain.status, verified: true, ...(await this.routing(domain.hostname)) };
     }
 
     const token = domain.verifyToken;
@@ -133,13 +133,38 @@ export class DomainsService {
     return {
       status: updated.status,
       verified: found,
-      pointsHere: found ? await this.pointsHere(domain.hostname) : false,
       ...(found
-        ? {}
+        ? await this.routing(domain.hostname)
         : {
+            pointsHere: false,
+            reachable: false,
             message: `No matching TXT record found at ${VERIFY_PREFIX}.${domain.hostname}. DNS changes can take up to an hour to propagate.`,
             found: records,
           }),
+    };
+  }
+
+  /**
+   * Where a verified hostname's traffic actually goes.
+   *
+   * Ownership and routing are separate questions and were being reported as
+   * one. A TXT record proves the customer controls the domain; it says nothing
+   * about whether a browser asking for it arrives here. Both are returned so
+   * the console can say which of the two is missing instead of promising HTTPS
+   * that will never arrive.
+   */
+  private async routing(hostname: string) {
+    const pointsHere = await this.pointsHere(hostname);
+    const reachable = await this.servesHere(hostname);
+
+    if (reachable) return { pointsHere, reachable };
+
+    return {
+      pointsHere,
+      reachable,
+      message: pointsHere
+        ? `DNS for ${hostname} points at this platform's configured address, but nothing there is answering as this platform. Check that PLATFORM_INGRESS_IP is the server running the proxy.`
+        : `${hostname} does not resolve to this platform yet. DNS changes can take up to an hour to propagate.`,
     };
   }
 
@@ -274,6 +299,46 @@ export class DomainsService {
       return addresses.includes(expectedIp);
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Does this platform actually answer on that hostname?
+   *
+   * `pointsHere` cannot tell you that. It compares DNS against
+   * `PLATFORM_INGRESS_IP` — the same value that produced the instruction the
+   * customer followed — so it agrees with itself whenever that setting is
+   * wrong, and reports a domain as pointing here while the address serves
+   * somebody else's web server entirely. That is not a hypothetical: a
+   * misconfigured ingress IP verified clean and then never loaded.
+   *
+   * So this asks the address itself. Plain HTTP on purpose: the proxy serves
+   * port 80 before any certificate exists — it has to, for the ACME challenge —
+   * so this works during setup, which is exactly when it is needed.
+   *
+   * A `success` envelope with `status: 'ok'` is the marker. Any 200 would be
+   * satisfied by the parked page or default vhost that tends to be sitting on a
+   * misconfigured address.
+   */
+  private async servesHere(hostname: string): Promise<boolean> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+
+    try {
+      const response = await fetch(`http://${hostname}/api/v1/health`, {
+        signal: controller.signal,
+        redirect: 'follow',
+        headers: { accept: 'application/json' },
+      });
+      if (!response.ok) return false;
+
+      const body = (await response.json()) as { data?: { status?: string } };
+      return body?.data?.status === 'ok';
+    } catch (error) {
+      this.logger.debug(`Reachability probe failed for ${hostname}: ${(error as Error).message}`);
+      return false;
+    } finally {
+      clearTimeout(timer);
     }
   }
 }
