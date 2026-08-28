@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { RequireAuth } from './guards';
+import { isAdminHost } from '@/config/env';
 import { ThemeProvider } from '@/features/theme/ThemeProvider';
 import { StorefrontLayout } from '@/layouts/StorefrontLayout';
 import { StorefrontAuthLayout } from '@/layouts/StorefrontAuthLayout';
@@ -19,6 +20,7 @@ const Cart = lazy(() => import('@/pages/storefront/Cart'));
 const Checkout = lazy(() => import('@/pages/storefront/Checkout'));
 const OrderConfirmation = lazy(() => import('@/pages/storefront/OrderConfirmation'));
 const Login = lazy(() => import('@/pages/auth/Login'));
+const Landing = lazy(() => import('@/pages/platform/Landing'));
 const AdminDashboard = lazy(() => import('@/pages/admin/Dashboard'));
 const AdminProducts = lazy(() => import('@/pages/admin/Products'));
 const AdminProductForm = lazy(() => import('@/pages/admin/ProductForm'));
@@ -32,6 +34,7 @@ const AdminNotifications = lazy(() => import('@/pages/admin/Notifications'));
 const AdminAppearance = lazy(() => import('@/pages/admin/Appearance'));
 const AdminBanners = lazy(() => import('@/pages/admin/Banners'));
 const AdminSubscribers = lazy(() => import('@/pages/admin/Subscribers'));
+const AdminStaff = lazy(() => import('@/pages/admin/Staff'));
 const AdminReviews = lazy(() => import('@/pages/admin/Reviews'));
 const AdminCustomers = lazy(() => import('@/pages/admin/Customers'));
 const AdminCustomerDetail = lazy(() => import('@/pages/admin/CustomerDetail'));
@@ -58,15 +61,29 @@ const wrap = (el: JSX.Element) => <Suspense fallback={<Loading />}>{el}</Suspens
  * The storefront tree is wrapped in ThemeProvider; the admin trees are not,
  * because admin chrome stays neutral regardless of which tenant is signed in.
  */
-export const router = createBrowserRouter([
-  {
-    path: '/',
-    element: (
-      <ThemeProvider>
-        <StorefrontLayout />
-      </ThemeProvider>
-    ),
-    children: [
+/**
+ * What lives at `/` depends on the hostname.
+ *
+ * A tenant hostname gets that store's homepage. The platform and admin
+ * hostnames resolve to no tenant at all, so the storefront tree there rendered
+ * "No store at this address" — accurate, and useless as a front door. They get
+ * the product's own landing page instead, which is also where staff sign in
+ * from.
+ *
+ * Decided once at module load rather than per render: the hostname cannot
+ * change without a navigation, and a route tree that reshuffles itself is far
+ * harder to reason about than two explicit ones.
+ */
+const rootRoute = isAdminHost()
+  ? { path: '/', element: wrap(<Landing />) }
+  : {
+      path: '/',
+      element: (
+        <ThemeProvider>
+          <StorefrontLayout />
+        </ThemeProvider>
+      ),
+      children: [
       { index: true, element: wrap(<Home />) },
       { path: 'product/:slug', element: wrap(<ProductDetail />) },
       { path: 'shop', element: wrap(<Shop />) },
@@ -81,8 +98,11 @@ export const router = createBrowserRouter([
       // single-segment address, so it must not shadow a built-in route. The
       // API refuses reserved slugs for the same reason.
       { path: ':slug', element: wrap(<CmsPage />) },
-    ],
-  },
+      ],
+    };
+
+export const router = createBrowserRouter([
+  rootRoute,
   {
     /**
      * Signing in gets the store's branding but not its furniture.
@@ -121,6 +141,7 @@ export const router = createBrowserRouter([
           { path: 'theme', element: wrap(<AdminAppearance />) },
           { path: 'banners', element: wrap(<AdminBanners />) },
           { path: 'subscribers', element: wrap(<AdminSubscribers />) },
+          { path: 'staff', element: wrap(<AdminStaff />) },
           { path: 'reviews', element: wrap(<AdminReviews />) },
           { path: 'customers', element: wrap(<AdminCustomers />) },
           { path: 'customers/:id', element: wrap(<AdminCustomerDetail />) },

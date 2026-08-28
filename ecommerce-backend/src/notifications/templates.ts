@@ -486,3 +486,58 @@ export function newsletterWelcome(data: {
 
   return { subject: `You are on the ${data.storeName} list`, html, text };
 }
+
+
+/**
+ * Tells someone an account has been made for them at a store.
+ *
+ * Carries no password, deliberately. `deliverEmail` stores the rendered body so
+ * a failed send can be replayed, which is right for a receipt and wrong for a
+ * credential: unlike the OTP codes — bounded by a ten-minute expiry and cleared
+ * once spent — a staff password has no expiry, so mailing it would leave a
+ * working credential sitting in the notifications table indefinitely, readable
+ * by anyone who can open that screen.
+ *
+ * The one-time password is shown to the administrator instead, once, at the
+ * moment they create the account, and passed on by them.
+ */
+export function staffInvited(data: {
+  storeName: string;
+  storeEmail: string;
+  firstName: string;
+  role: string;
+  signInUrl: string;
+}): RenderedEmail {
+  const e = escapeHtml;
+
+  const html = `
+<div style="font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#111">
+  <h1 style="font-size:20px;margin:0 0 4px">You have access to ${e(data.storeName)}</h1>
+  <p style="color:#555;margin:0 0 16px">
+    Hello ${e(data.firstName)} — an account has been created for you as
+    <strong>${e(data.role)}</strong>.
+  </p>
+  <p style="color:#555;margin:0 0 16px">
+    Sign in at <a href="${e(data.signInUrl)}" style="color:#166534">${e(data.signInUrl)}</a>
+    using this email address. Your administrator will give you the password
+    separately — it is deliberately not sent by email.
+  </p>
+  <p style="color:#888;font-size:12px;margin-top:32px;border-top:1px solid #eee;padding-top:16px">
+    ${e(data.storeName)} · ${e(data.storeEmail)}
+  </p>
+</div>`.trim();
+
+  const text = [
+    `You have access to ${data.storeName}`,
+    ``,
+    `Hello ${data.firstName} - an account has been created for you as ${data.role}.`,
+    ``,
+    `Sign in at ${data.signInUrl} using this email address.`,
+    `Your administrator will give you the password separately - it is`,
+    `deliberately not sent by email.`,
+    ``,
+    `${data.storeName} · ${data.storeEmail}`,
+  ].join('\n');
+
+  return { subject: `Your ${data.storeName} account`, html, text };
+}

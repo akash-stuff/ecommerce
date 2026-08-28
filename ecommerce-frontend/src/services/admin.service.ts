@@ -280,3 +280,47 @@ export const subscriberService = {
     return response.data as Blob;
   },
 };
+
+export interface StaffMember {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone: string | null;
+  role: 'TENANT_OWNER' | 'TENANT_ADMIN' | 'STAFF';
+  isActive: boolean;
+  createdAt: string;
+  lastLoginAt: string | null;
+  /** True for the signed-in person, so the UI can disable self-lockout. */
+  isSelf: boolean;
+  permissions: string[];
+}
+
+export const staffService = {
+  list: (params: { page?: number; limit?: number; search?: string; isActive?: boolean }) =>
+    paged<StaffMember>(apiClient.get('/staff', { params })),
+
+  /**
+   * The response carries `temporaryPassword` exactly once, for a genuinely new
+   * account. It is null when the person already had one — being added to a
+   * second store must not reset the password they use for the first.
+   */
+  create: (payload: {
+    email: string;
+    firstName: string;
+    lastName: string;
+    phone?: string;
+    role: 'TENANT_ADMIN' | 'STAFF';
+  }) =>
+    unwrap<StaffMember & { temporaryPassword: string | null }>(
+      apiClient.post('/staff', payload),
+    ),
+
+  update: (id: string, payload: { role?: 'TENANT_ADMIN' | 'STAFF'; isActive?: boolean }) =>
+    unwrap<{ id: string; role: string; isActive: boolean }>(apiClient.put(`/staff/${id}`, payload)),
+
+  resetPassword: (id: string) =>
+    unwrap<{ temporaryPassword: string }>(apiClient.post(`/staff/${id}/reset-password`)),
+
+  remove: (id: string) => apiClient.delete(`/staff/${id}`),
+};

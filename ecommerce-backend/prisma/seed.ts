@@ -84,7 +84,7 @@ async function main(): Promise<void> {
     {
       name: 'Furniture', slug: 'furniture', category: 'home',
       description: 'Room-scale photography with generous spacing. Slow, considered browsing.',
-      theme: { primaryColor: '#6B4423', secondaryColor: '#C9A227', accentColor: '#8C5A2B', headingFont: 'Fraunces', bodyFont: 'Inter', background: 'paper', logoSize: 'lg' },
+      theme: { primaryColor: '#166534', secondaryColor: '#F5A524', accentColor: '#166534', headingFont: 'Fraunces', bodyFont: 'Inter', background: 'paper', logoSize: 'lg' },
       sections: ['hero', 'categories', 'featured', 'newsletter'],
     },
     {

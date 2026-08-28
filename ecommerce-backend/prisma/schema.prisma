@@ -319,9 +319,11 @@ model Theme {
   storeId        String  @unique
   logoUrl        String?
   faviconUrl     String?
-  primaryColor   String  @default("#111111")
-  secondaryColor String  @default("#6B7280")
-  accentColor    String  @default("#111111")
+  /// Green leads, amber-orange supports. Mirrored in src/theme/brand-defaults.ts
+  /// and the frontend's index.css; change all three together.
+  primaryColor   String  @default("#166534")
+  secondaryColor String  @default("#F5A524")
+  accentColor    String  @default("#166534")
   bodyFont       String  @default("Inter")
   headingFont    String  @default("Inter")
   /// Header logo height: 'sm' | 'md' | 'lg'. One fixed size cannot suit both a

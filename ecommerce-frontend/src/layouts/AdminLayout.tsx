@@ -3,7 +3,7 @@ import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard, Package, Tags, ShoppingCart, Users, Boxes, Truck, Mail,
   Ticket, Palette, BarChart3, Settings, LogOut, Star, FileText, Image, Menu, X,
-  ExternalLink, CreditCard, AtSign,
+  ExternalLink, CreditCard, AtSign, UserCog,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { Toaster } from '@/components/Toasts';
@@ -51,6 +51,7 @@ const NAV: { group: string; items: NavItem[] }[] = [
       { to: '/admin/shipping', label: 'Shipping', icon: Truck, permission: PERMISSIONS.SHIPPING_READ },
       { to: '/admin/payments', label: 'Payments', icon: CreditCard, permission: PERMISSIONS.PAYMENTS_MANAGE },
       { to: '/admin/notifications', label: 'Notifications', icon: Mail, permission: PERMISSIONS.SETTINGS_READ },
+      { to: '/admin/staff', label: 'Staff', icon: UserCog, permission: PERMISSIONS.STAFF_READ },
       { to: '/admin/settings', label: 'Settings', icon: Settings, permission: PERMISSIONS.SETTINGS_READ },
     ],
   },
@@ -65,9 +66,13 @@ interface NavItem {
 }
 
 /**
- * Admin chrome is deliberately achromatic. On a white-label platform the only
- * saturated colour on an admin screen should be the tenant's own brand, shown
- * where it is being edited — not competing with the navigation.
+ * Admin chrome carries the *platform's* colours, not the tenant's.
+ *
+ * This tree is deliberately outside ThemeProvider, so `brand` here resolves to
+ * the CSS fallback in index.css — the platform green — and never to whichever
+ * store was last loaded in the tab. That is what makes it safe to use the token
+ * in the navigation: the console looks the same for every store, while the
+ * storefront stays entirely the tenant's.
  */
 export function AdminLayout() {
   const { user, logout, can } = useAuthStore();
@@ -124,8 +129,8 @@ export function AdminLayout() {
                     [
                       'group flex items-center gap-3 rounded-card px-3 py-2 text-sm transition-colors',
                       isActive
-                        ? 'bg-ink-950 font-medium text-white'
-                        : 'text-ink-700 hover:bg-ink-50 hover:text-ink-950',
+                        ? 'bg-brand font-medium text-white shadow-glow-sm'
+                        : 'text-ink-700 hover:bg-brand/[0.06] hover:text-brand',
                     ].join(' ')
                   }
                 >
@@ -182,7 +187,7 @@ export function AdminLayout() {
   );
 
   return (
-    <div className="admin-chrome flex min-h-screen bg-ink-50">
+    <div className="admin-chrome flex min-h-screen bg-ink-50 bg-brand-wash bg-fixed">
       <Toaster />
       <aside className="sticky top-0 hidden h-screen w-60 shrink-0 flex-col border-r border-ink-100 bg-white lg:flex">
         {sidebar}

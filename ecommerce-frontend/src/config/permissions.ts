@@ -22,6 +22,10 @@ export const PERMISSIONS = {
   PAGES_WRITE: 'pages.write',
   REVIEWS_MODERATE: 'reviews.moderate',
   ANALYTICS_READ: 'analytics.read',
+
+  // Mirrors the backend's rbac/permissions.ts. STAFF_MANAGE (below) is
+  // owner-only there, so an administrator sees the Staff screen read-only.
+  STAFF_READ: 'staff.read',
   SETTINGS_READ: 'settings.read',
   SETTINGS_UPDATE: 'settings.update',
   STAFF_MANAGE: 'staff.manage',

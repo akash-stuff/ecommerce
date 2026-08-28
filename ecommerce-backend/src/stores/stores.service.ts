@@ -1,3 +1,4 @@
+import { BRAND_DEFAULTS } from '../theme/brand-defaults';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { StoreConfigDto, StoreThemeDto } from './dto/store.dto';
@@ -95,8 +96,8 @@ function toThemeDto(theme: ThemeRow): StoreThemeDto {
   return {
     logoUrl: theme?.logoUrl ?? null,
     faviconUrl: theme?.faviconUrl ?? null,
-    primaryColor: theme?.primaryColor ?? '#111111',
-    secondaryColor: theme?.secondaryColor ?? '#6B7280',
+    primaryColor: theme?.primaryColor ?? BRAND_DEFAULTS.PRIMARY,
+    secondaryColor: theme?.secondaryColor ?? BRAND_DEFAULTS.SECONDARY,
     bodyFont: theme?.bodyFont ?? 'Inter',
     headingFont: theme?.headingFont ?? 'Inter',
     /**

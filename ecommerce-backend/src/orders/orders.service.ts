@@ -1,3 +1,4 @@
+import { BRAND_DEFAULTS } from '../theme/brand-defaults';
 import {
   BadRequestException,
   ConflictException,
@@ -279,7 +280,7 @@ export class OrdersService {
       await this.notifications.orderPlaced(order.customerEmail, order.tenantId, {
         storeName: store?.name ?? 'The store',
         storeEmail: store?.email ?? order.customerEmail,
-        brandColor: store?.theme?.primaryColor ?? '#111111',
+        brandColor: store?.theme?.primaryColor ?? BRAND_DEFAULTS.PRIMARY,
         orderNumber: order.orderNumber,
         customerName: address.fullName,
         currency: order.currency,

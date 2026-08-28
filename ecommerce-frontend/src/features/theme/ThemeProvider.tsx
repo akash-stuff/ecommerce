@@ -41,7 +41,16 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     document.title = metaTitle || name;
     setMeta('description', metaDescription ?? '');
     setMeta('og:title', metaTitle || name, 'property');
-    if (theme.faviconUrl) setFavicon(theme.faviconUrl);
+    /**
+     * A store that has not uploaded a favicon gets one made from its own
+     * initial and its own colour — never the platform's.
+     *
+     * Before this, the fallback was whatever `index.html` pointed at, which is
+     * now the Everystore tile. Leaving it would put the platform's mark in the
+     * browser tab of every store that had not got round to uploading one, which
+     * is exactly the thing a white-label platform must not do.
+     */
+    setFavicon(theme.faviconUrl || letterFavicon(name, theme.primaryColor));
 
     loadFonts([theme.bodyFont, theme.headingFont]);
     applyCustomCss(theme.customCss);
@@ -134,6 +143,30 @@ function setMeta(name: string, content: string, attr: 'name' | 'property' = 'nam
     document.head.appendChild(tag);
   }
   tag.content = content;
+}
+
+/**
+ * A favicon drawn from the store's initial, as a data URI.
+ *
+ * SVG rather than a canvas: it stays sharp at any density, needs no DOM, and is
+ * small enough inline that the tab icon appears with the first paint instead of
+ * after a second request.
+ */
+function letterFavicon(storeName: string, primaryColor: string): string {
+  const initial = (storeName.trim()[0] ?? '?').toUpperCase();
+  const svg = [
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">',
+    `<rect width="32" height="32" rx="7" fill="${primaryColor}"/>`,
+    '<text x="16" y="17" fill="#ffffff" font-family="Inter,system-ui,sans-serif"',
+    ' font-size="17" font-weight="600" text-anchor="middle"',
+    ' dominant-baseline="central">',
+    // Escaped: a store called "A&B" would otherwise produce invalid SVG and a
+    // blank tab icon.
+    initial.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'),
+    '</text></svg>',
+  ].join('');
+
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
 
 function setFavicon(url: string): void {

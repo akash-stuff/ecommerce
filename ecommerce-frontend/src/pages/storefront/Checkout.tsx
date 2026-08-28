@@ -10,8 +10,9 @@ import { payWithRazorpay, type RazorpayIntent } from '@/features/payments/razorp
 import { useCart } from '@/hooks/useCart';
 import { useStore } from '@/features/theme/ThemeProvider';
 import { OrderSummary } from '@/components/OrderSummary';
+import { OrderPlacedOverlay } from '@/features/checkout/OrderPlaced';
 import { formatMoney } from '@/utils/format';
-import type { ShippingOption } from '@/types/api';
+import type { Order, ShippingOption } from '@/types/api';
 
 /**
  * Mirrors the backend DTO's constraints so the shopper is told about a too-short
@@ -37,6 +38,19 @@ export default function Checkout() {
   const store = useStore();
   const navigate = useNavigate();
   const { data: baseCart } = useCart();
+
+  /**
+   * Set once the order is accepted, which swaps the page for the tick.
+   *
+   * The navigation is deferred to the overlay rather than fired here: the whole
+   * point is a held beat that says "this went through" before the confirmation
+   * page arrives.
+   */
+  const [placed, setPlaced] = useState<{
+    order: Order;
+    amount: string;
+    method: string;
+  } | null>(null);
 
   const [methodId, setMethodId] = useState<string | null>(null);
   const [isCod, setIsCod] = useState(true);
@@ -142,7 +156,11 @@ export default function Checkout() {
     onSuccess: async (order) => {
       // Cash needs nothing further — the shopkeeper marks it collected.
       if (isCod) {
-        navigate(`/order/${order.orderNumber}`, { state: { order } });
+        setPlaced({
+          order,
+          amount: formatMoney(order.grandTotal, store.currency),
+          method: 'Cash on delivery',
+        });
         return;
       }
 
@@ -176,6 +194,16 @@ export default function Checkout() {
           await paymentService
             .confirm(order.orderNumber, 'RAZORPAY', outcome.result)
             .catch(() => undefined);
+
+          // The tick is shown for a payment that actually completed, and only
+          // then. A dismissed or failed attempt goes straight to the order page,
+          // where "awaiting payment" is the truth.
+          setPlaced({
+            order,
+            amount: formatMoney(order.grandTotal, store.currency),
+            method: 'Paid with Razorpay',
+          });
+          return;
         } else if (outcome.status === 'failed') {
           setPlaceError(`${outcome.reason} Your order is saved — you can pay again from it.`);
         }
@@ -195,6 +223,31 @@ export default function Checkout() {
     onError: (e) =>
       setPlaceError((e as { message?: string }).message ?? 'Could not place the order.'),
   });
+
+  /**
+   * Before the empty-cart guard below, and that order matters.
+   *
+   * Placing an order empties the cart, so by the time this renders
+   * `itemCount` is 0 — the guard would replace the confirmation with "there is
+   * nothing to check out" at the exact moment the order succeeded.
+   *
+   * `replace` on the navigation so Back does not return to a checkout form for
+   * an order that has already been placed.
+   */
+  if (placed) {
+    return (
+      <OrderPlacedOverlay
+        amount={placed.amount}
+        method={placed.method}
+        onDone={() =>
+          navigate(`/order/${placed.order.orderNumber}`, {
+            state: { order: placed.order },
+            replace: true,
+          })
+        }
+      />
+    );
+  }
 
   if (baseCart && baseCart.itemCount === 0) {
     return (

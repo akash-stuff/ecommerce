@@ -13,13 +13,89 @@ import {
   Plus,
   ShoppingCart,
   Users,
+  Download,
 } from 'lucide-react';
-import { platformService, type StoreBreakdown } from '@/services/platform.service';
+import {
+  platformService,
+  type PlatformOverview as PlatformOverviewData,
+  type StoreBreakdown,
+} from '@/services/platform.service';
 import { Card, EmptyState, Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { StatusBadge } from '@/components/admin/DataTable';
 import { formatMoney } from '@/utils/format';
+import { csvRow, datedFilename, downloadCsv } from '@/utils/csv';
+import { toast } from '@/components/Toasts';
 
 const RANGES = [7, 30, 90];
+
+/**
+ * The platform-wide view as a spreadsheet: the estate, then the leaderboard.
+ *
+ * Raw numbers rather than formatted money, so the columns still add up when
+ * someone drops them into a report.
+ */
+function platformCsv(data: PlatformOverviewData): string[] {
+  const lines: string[] = [];
+  lines.push(csvRow(['Platform overview']));
+  lines.push(csvRow(['Range (days)', data.range.days]));
+  lines.push('');
+
+  lines.push(csvRow(['Metric', 'Value']));
+  lines.push(csvRow(['Stores (total)', data.tenants.total]));
+  lines.push(csvRow(['Stores active', data.tenants.active]));
+  lines.push(csvRow(['Stores pending', data.tenants.pending]));
+  lines.push(csvRow(['Stores suspended', data.tenants.suspended]));
+  lines.push(csvRow(['Stores cancelled', data.tenants.cancelled]));
+  lines.push(csvRow(['Stores new in range', data.tenants.newInRange]));
+  lines.push(csvRow(['Products', data.catalogue.products]));
+  lines.push(csvRow(['Customers', data.catalogue.customers]));
+  lines.push(csvRow(['Gross merchandise value', data.grossMerchandiseValue]));
+  lines.push(csvRow(['Orders', data.orders]));
+  lines.push('');
+
+  lines.push(csvRow(['Store', 'Slug', 'Orders', 'Revenue']));
+  for (const t of data.topTenants) {
+    lines.push(csvRow([t.businessName, t.slug, t.orders, t.revenue]));
+  }
+  return lines;
+}
+
+/** One store's breakdown, when the picker has narrowed the page to it. */
+function storeCsv(data: StoreBreakdown): string[] {
+  const lines: string[] = [];
+  lines.push(csvRow([data.tenant.businessName]));
+  lines.push(csvRow(['Slug', data.tenant.slug]));
+  lines.push(csvRow(['Status', data.tenant.status]));
+  lines.push(csvRow(['Plan', data.tenant.plan ?? '']));
+  lines.push(csvRow(['Contact', data.tenant.contactEmail]));
+  lines.push(csvRow(['Currency', data.tenant.currency]));
+  lines.push(csvRow(['Created', data.tenant.createdAt]));
+  lines.push(csvRow(['Range (days)', data.range.days]));
+  lines.push(csvRow(['From', data.range.from]));
+  lines.push(csvRow(['To', data.range.to]));
+  lines.push('');
+
+  lines.push(csvRow(['Metric', 'Value', 'Previous period']));
+  lines.push(csvRow(['Revenue', data.revenue.total, data.revenue.previous]));
+  lines.push(csvRow(['Orders', data.orders.count, data.orders.previous]));
+  lines.push(csvRow(['Average order value', data.orders.averageValue, '']));
+  lines.push(csvRow(['Products', data.catalogue.products, '']));
+  lines.push(csvRow(['Products live', data.catalogue.live, '']));
+  lines.push(csvRow(['Customers', data.catalogue.customers, '']));
+  lines.push('');
+
+  lines.push(csvRow(['Order status', 'Count']));
+  for (const [status, count] of Object.entries(data.orders.byStatus)) {
+    lines.push(csvRow([status, count]));
+  }
+  lines.push('');
+
+  lines.push(csvRow(['Top product', 'SKU', 'Units sold', 'Revenue']));
+  for (const p of data.topProducts) {
+    lines.push(csvRow([p.name, p.sku, p.unitsSold, p.revenue]));
+  }
+  return lines;
+}
 
 export default function PlatformOverview() {
   const [days, setDays] = useState(30);
@@ -87,6 +163,28 @@ export default function PlatformOverview() {
               </button>
             ))}
           </div>
+          {/* Exports whichever view is on screen: the whole estate, or the one
+              store the picker has narrowed to. */}
+          <SecondaryButton
+            disabled={selectedId ? !store.data : !data}
+            onClick={() => {
+              if (selectedId && store.data) {
+                downloadCsv(
+                  datedFilename(`store-${store.data.tenant.slug}-${days}d`),
+                  storeCsv(store.data),
+                );
+                toast.saved('Store exported', store.data.tenant.businessName);
+                return;
+              }
+              if (!data) return;
+              downloadCsv(datedFilename(`platform-${days}d`), platformCsv(data));
+              toast.saved('Platform exported', `${days} days of figures`);
+            }}
+          >
+            <Download size={13} />
+            Export CSV
+          </SecondaryButton>
+
           <Link to="/platform/tenants?new=1">
             <PrimaryButton>
               <Plus size={15} />
@@ -288,13 +386,13 @@ export default function PlatformOverview() {
                   label="Active"
                   value={data.tenants.active}
                   total={data.tenants.total}
-                  tone="bg-green-600"
+                  tone="bg-brand"
                 />
                 <StateBar
                   label="Pending"
                   value={data.tenants.pending}
                   total={data.tenants.total}
-                  tone="bg-amber-500"
+                  tone="bg-brand-secondary"
                 />
                 <StateBar
                   label="Suspended"
@@ -523,14 +621,25 @@ function Stat({
   change?: number | null;
 }) {
   return (
-    <div className="rounded-card border border-ink-100 bg-white p-5 shadow-card">
+    /**
+     * The hairline at the top is the brand pair, revealed on hover.
+     *
+     * `overflow-hidden` so it follows the corner radius, and it is an absolutely
+     * positioned element rather than a border, because a border that appears on
+     * hover shifts every other card in the row by a pixel.
+     */
+    <div className="group relative overflow-hidden rounded-card border border-ink-100 bg-white p-5 shadow-card transition-all duration-200 hover:-translate-y-0.5 hover:border-brand/20 hover:shadow-lifted">
+      <span
+        aria-hidden="true"
+        className="absolute inset-x-0 top-0 h-0.5 origin-left scale-x-0 bg-gradient-to-r from-brand to-brand-secondary transition-transform duration-300 group-hover:scale-x-100"
+      />
       <div className="flex items-start justify-between gap-3">
-        <p className="text-xs uppercase tracking-wide text-ink-500">{label}</p>
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-ink-50 text-ink-400">
-          <Icon size={13} />
+        <p className="text-xs font-medium uppercase tracking-wide text-ink-500">{label}</p>
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl border border-brand/15 bg-brand/[0.06] text-brand transition-colors group-hover:border-brand/30">
+          <Icon size={14} strokeWidth={1.75} />
         </span>
       </div>
-      <p className="numeric mt-2 text-2xl font-medium tracking-tight text-ink-950">{value}</p>
+      <p className="numeric mt-3 text-2xl font-semibold tracking-tight text-ink-950">{value}</p>
 
       {change !== undefined && change !== null && (
         <p
@@ -581,7 +690,7 @@ function StateBar({
           <span className="ml-1.5 text-xs text-ink-400">{percent}%</span>
         </span>
       </div>
-      <div className="mt-1.5 h-1.5 overflow-hidden rounded-full bg-ink-100">
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-ink-100/80">
         <div
           className={`h-full rounded-full transition-[width] duration-500 ${tone}`}
           style={{ width: `${percent}%` }}

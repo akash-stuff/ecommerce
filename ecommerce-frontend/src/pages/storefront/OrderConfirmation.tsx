@@ -1,5 +1,5 @@
 import { Link, useLocation, useParams } from 'react-router-dom';
-import { Check } from 'lucide-react';
+import { SuccessTick } from '@/features/checkout/OrderPlaced';
 import { useStore } from '@/features/theme/ThemeProvider';
 import { formatMoney } from '@/utils/format';
 import type { Order } from '@/types/api';
@@ -34,9 +34,12 @@ export default function OrderConfirmation() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-16 sm:px-6">
+      {/* The same mark as the overlay that preceded this page, so arriving here
+          reads as continuous rather than as a different screen with a different
+          idea of what a confirmation looks like. */}
       <div className="flex items-center gap-3">
-        <span className="flex h-9 w-9 items-center justify-center rounded-full bg-green-100 text-green-700">
-          <Check size={18} />
+        <span className="text-emerald-600">
+          <SuccessTick size={36} />
         </span>
         <h1 className="font-display text-2xl tracking-tight text-ink-950">Order confirmed</h1>
       </div>

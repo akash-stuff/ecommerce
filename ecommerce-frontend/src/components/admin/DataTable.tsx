@@ -192,6 +192,7 @@ export function StatusBadge({ value }: { value: string }) {
     retired: 'bg-ink-100 text-ink-500 ring-ink-950/10',
     draft: 'bg-ink-100 text-ink-500 ring-ink-950/10',
     'opted out': 'bg-ink-100 text-ink-500 ring-ink-950/10',
+    suspended: 'bg-amber-50 text-amber-800 ring-amber-600/15',
     subscribed: 'bg-green-50 text-green-700 ring-green-600/15',
   };
 

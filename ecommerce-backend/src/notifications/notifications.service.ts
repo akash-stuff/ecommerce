@@ -13,6 +13,7 @@ import {
   orderConfirmation,
   orderStatusChanged,
   passwordResetCode,
+  staffInvited,
   storeSetup,
   type OrderEmailData,
   type RenderedEmail,
@@ -201,6 +202,26 @@ export class NotificationsService {
       to,
       payload: { alreadySubscribed: data.alreadySubscribed },
       rendered: newsletterWelcome(data),
+    });
+  }
+
+  /**
+   * Tells a new staff member their account exists.
+   *
+   * Carries no password: see the template for why a stored body must not hold
+   * a credential that never expires.
+   */
+  staffInvited(
+    to: string,
+    tenantId: string,
+    data: { storeName: string; storeEmail: string; firstName: string; role: string; signInUrl: string },
+  ) {
+    return this.deliverEmail({
+      tenantId,
+      event: 'staff.invited',
+      to,
+      payload: { role: data.role },
+      rendered: staffInvited(data),
     });
   }
 

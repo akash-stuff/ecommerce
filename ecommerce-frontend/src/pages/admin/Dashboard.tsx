@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowDownRight, ArrowRight, ArrowUpRight } from 'lucide-react';
+import { ArrowDownRight, ArrowRight, ArrowUpRight, Download } from 'lucide-react';
 import { apiClient, unwrap } from '@/services/api-client';
-import { Page } from '@/components/admin/Page';
+import { Page, SecondaryButton } from '@/components/admin/Page';
 import { formatMoney } from '@/utils/format';
+import { csvRow, datedFilename, downloadCsv } from '@/utils/csv';
+import { toast } from '@/components/Toasts';
 
 interface Dashboard {
   range: { days: number; from: string; to: string };
@@ -17,6 +19,51 @@ interface Dashboard {
 }
 
 const RANGES = [7, 30, 90];
+
+/**
+ * The Overview as a spreadsheet.
+ *
+ * Three sections in one file rather than three files: the headline figures, the
+ * day-by-day series behind the chart, and the top products table. A blank line
+ * separates them, which is what spreadsheet software treats as a new block —
+ * and what someone pasting this into a report expects.
+ *
+ * Raw numbers, not formatted ones: `1234.50` sums in a spreadsheet, `₹1,234.50`
+ * does not.
+ */
+function overviewCsv(data: Dashboard): string[] {
+  const lines: string[] = [];
+
+  lines.push(csvRow(['Overview']));
+  lines.push(csvRow(['Range (days)', data.range.days]));
+  lines.push(csvRow(['From', data.range.from]));
+  lines.push(csvRow(['To', data.range.to]));
+  lines.push('');
+
+  lines.push(csvRow(['Metric', 'Value', 'Previous period']));
+  lines.push(csvRow(['Revenue', data.revenue.total, data.revenue.previous]));
+  lines.push(csvRow(['Orders', data.orders.count, data.orders.previous]));
+  lines.push(csvRow(['Average order value', data.orders.averageValue, '']));
+  lines.push(csvRow(['Customers (total)', data.customers.total, '']));
+  lines.push(csvRow(['Customers (new in range)', data.customers.newInRange, '']));
+  lines.push(csvRow(['Orders awaiting action', data.pending.orders, '']));
+  lines.push(csvRow(['Reviews awaiting moderation', data.pending.reviews, '']));
+  lines.push(csvRow(['Products low on stock', data.pending.lowStock, '']));
+  lines.push('');
+
+  lines.push(csvRow(['Date', 'Revenue', 'Orders']));
+  for (const day of data.dailyRevenue) {
+    lines.push(csvRow([day.date, day.revenue, day.orders]));
+  }
+  lines.push('');
+
+  lines.push(csvRow(['Top product', 'SKU', 'Units sold', 'Revenue']));
+  for (const product of data.topProducts) {
+    lines.push(csvRow([product.name, product.sku, product.unitsSold, product.revenue]));
+  }
+
+  return lines;
+}
 
 export default function Dashboard() {
   const [days, setDays] = useState(30);
@@ -34,20 +81,36 @@ export default function Dashboard() {
       title="Overview"
       subtitle="Revenue, orders and what needs attention"
       action={
-        <div className="flex gap-1 rounded-card border border-ink-100 bg-white p-1 shadow-card">
-          {RANGES.map((r) => (
-            <button
-              key={r}
-              type="button"
-              onClick={() => setDays(r)}
-              aria-pressed={days === r}
-              className={`numeric rounded px-3 py-1 text-sm transition-colors ${
-                days === r ? 'bg-ink-950 text-white' : 'text-ink-700 hover:bg-ink-50'
-              }`}
-            >
-              {r}d
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex gap-1 rounded-card border border-ink-100 bg-white p-1 shadow-card">
+            {RANGES.map((r) => (
+              <button
+                key={r}
+                type="button"
+                onClick={() => setDays(r)}
+                aria-pressed={days === r}
+                className={`numeric rounded px-3 py-1 text-sm transition-colors ${
+                  days === r ? 'bg-ink-950 text-white' : 'text-ink-700 hover:bg-ink-50'
+                }`}
+              >
+                {r}d
+              </button>
+            ))}
+          </div>
+
+          {/* Disabled until there are figures to export, rather than handing
+              over a file with nothing but headers in it. */}
+          <SecondaryButton
+            disabled={!data}
+            onClick={() => {
+              if (!data) return;
+              downloadCsv(datedFilename(`overview-${data.range.days}d`), overviewCsv(data));
+              toast.saved('Overview exported', `${data.range.days} days of figures`);
+            }}
+          >
+            <Download size={13} />
+            Export CSV
+          </SecondaryButton>
         </div>
       }
     >

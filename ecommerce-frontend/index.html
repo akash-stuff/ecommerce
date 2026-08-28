@@ -3,10 +3,16 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <!-- Title, favicon and meta tags are replaced at runtime by ThemeProvider
-         using the store config fetched for the current hostname. -->
-    <title>Store</title>
-    <link rel="icon" href="/favicon.svg" />
+    <!--
+      Title, favicon and meta tags are replaced at runtime: by ThemeProvider on a
+      tenant hostname, and by the platform pages on the console hostnames. What
+      is here is the pre-hydration default, which is why it is the platform's own
+      identity rather than a placeholder — "Store" with a missing icon was what
+      every tab showed for the first paint.
+    -->
+    <title>Everystore</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="theme-color" content="#166534" />
   </head>
   <body>
     <div id="root"></div>

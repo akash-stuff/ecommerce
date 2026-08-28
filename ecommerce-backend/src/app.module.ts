@@ -34,6 +34,7 @@ import { WishlistModule } from './wishlist/wishlist.module';
 import { PagesModule } from './pages/pages.module';
 import { BannersModule } from './banners/banners.module';
 import { NewsletterModule } from './newsletter/newsletter.module';
+import { StaffModule } from './staff/staff.module';
 import { MediaModule } from './media/media.module';
 import { HealthModule } from './health/health.module';
 
@@ -72,6 +73,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     PagesModule,
     BannersModule,
     NewsletterModule,
+    StaffModule,
     MediaModule,
     TenantsModule,
     AuthModule,

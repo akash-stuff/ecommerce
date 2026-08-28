@@ -78,7 +78,7 @@ export function PrimaryButton({ children, size = 'md', className = '', ...props 
     <button
       type="button"
       {...props}
-      className={`${base} ${SIZES[size]} bg-ink-950 text-white shadow-card hover:bg-ink-900 ${className}`}
+      className={`${base} ${SIZES[size]} bg-brand text-white shadow-glow transition-all hover:-translate-y-px hover:shadow-lifted disabled:translate-y-0 disabled:shadow-glow-sm ${className}`}
     >
       {children}
     </button>
@@ -90,7 +90,7 @@ export function SecondaryButton({ children, size = 'md', className = '', ...prop
     <button
       type="button"
       {...props}
-      className={`${base} ${SIZES[size]} border border-ink-200 bg-white text-ink-900 hover:border-ink-300 hover:bg-ink-50 ${className}`}
+      className={`${base} ${SIZES[size]} border border-ink-200 bg-white text-ink-900 shadow-card transition-all hover:border-brand/40 hover:bg-brand/[0.04] hover:text-brand hover:shadow-raised ${className}`}
     >
       {children}
     </button>
@@ -129,7 +129,7 @@ export function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className={`rounded-card border border-ink-100 bg-white shadow-card ${className}`}>
+    <section className={`rounded-card border border-ink-100 bg-white shadow-card transition-shadow hover:shadow-lifted ${className}`}>
       {(title || action) && (
         <header className="flex items-start justify-between gap-3 border-b border-ink-100 px-5 py-4">
           <div>
