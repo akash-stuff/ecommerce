@@ -23,12 +23,20 @@ export interface PaginationMeta {
 export type Role = 'SUPER_ADMIN' | 'TENANT_OWNER' | 'TENANT_ADMIN' | 'STAFF' | 'CUSTOMER';
 
 export interface AuthUser {
-  id: string;
+  // id: string;
+  // email: string;
+  // firstName: string;
+  // lastName: string;
+  // role: Role;
+  // tenantId: string | null;
+  // permissions: string[];
+    id: string;
   email: string;
   firstName: string;
   lastName: string;
   role: Role;
   tenantId: string | null;
+  tenantSlug: string | null;
   permissions: string[];
 }
 

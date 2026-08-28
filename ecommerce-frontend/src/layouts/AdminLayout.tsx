@@ -6,6 +6,7 @@ import {
   ExternalLink, CreditCard, AtSign, UserCog,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
+import { tenantUrl } from '@/config/env';
 import { Toaster } from '@/components/Toasts';
 import { PERMISSIONS } from '@/config/permissions';
 
@@ -79,6 +80,7 @@ export function AdminLayout() {
   const navigate = useNavigate();
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const storefrontUrl = user?.tenantSlug ? tenantUrl(user.tenantSlug) : '/';
 
   // The drawer is navigation, so a completed navigation is what closes it.
   // Closing on click instead would leave it open whenever the route changed for
@@ -156,7 +158,7 @@ export function AdminLayout() {
             navigated to: losing an unsaved theme edit to "let me just look" is
             a bad trade. */}
         <a
-          href="/"
+           href={storefrontUrl}
           target="_blank"
           rel="noreferrer"
           className="mb-1 flex items-center gap-3 rounded-card px-3 py-2 text-sm text-ink-700 transition-colors hover:bg-ink-50 hover:text-ink-950"

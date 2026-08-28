@@ -107,8 +107,9 @@ export class AuthService {
 
     const ctx = RequestContextStore.get();
     let tenantId: string | null = null;
-    let role: SystemRole = user.systemRole;
-    let overrides: string[] = [];
+let tenantSlug: string | null = null;
+let role: SystemRole = user.systemRole;
+let overrides: string[] = [];
 
     if (user.systemRole !== SystemRole.SUPER_ADMIN) {
       // Bind to the tenant the request arrived on, else the sole membership.
@@ -128,9 +129,10 @@ export class AuthService {
           code: 'TENANT_INACTIVE',
         });
       }
-      tenantId = membership.tenantId;
-      role = membership.role;
-      overrides = membership.permissions;
+  tenantId = membership.tenantId;
+tenantSlug = membership.tenant.slug;
+role = membership.role;
+overrides = membership.permissions;
     }
 
     const permissions = resolvePermissions(role, overrides);
@@ -150,13 +152,14 @@ export class AuthService {
     return {
       ...tokens,
       user: {
-        id: user.id,
-        email: user.email,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role,
-        tenantId,
-        permissions,
+      id: user.id,
+  email: user.email,
+  firstName: user.firstName,
+  lastName: user.lastName,
+  role,
+  tenantId,
+  tenantSlug,
+  permissions,
       },
     };
   }
