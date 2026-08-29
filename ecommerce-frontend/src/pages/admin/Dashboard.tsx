@@ -1,7 +1,16 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { ArrowDownRight, ArrowRight, ArrowUpRight, Download } from 'lucide-react';
+import {
+  ArrowDownRight,
+  ArrowRight,
+  ArrowUpRight,
+  Download,
+  IndianRupee,
+  Receipt,
+  ShoppingCart,
+  Users,
+} from 'lucide-react';
 import { apiClient, unwrap } from '@/services/api-client';
 import { Page, SecondaryButton } from '@/components/admin/Page';
 import { formatMoney } from '@/utils/format';
@@ -156,17 +165,28 @@ export default function Dashboard() {
               label={`Revenue · last ${days} days`}
               value={formatMoney(data.revenue.total)}
               change={data.revenue.changePercent}
+              icon={IndianRupee}
+              tint="emerald"
             />
             <Stat
               label="Orders"
               value={String(data.orders.count)}
               change={percent(data.orders.previous, data.orders.count)}
+              icon={ShoppingCart}
+              tint="sky"
             />
-            <Stat label="Average order" value={formatMoney(data.orders.averageValue)} />
+            <Stat
+              label="Average order"
+              value={formatMoney(data.orders.averageValue)}
+              icon={Receipt}
+              tint="amber"
+            />
             <Stat
               label="Customers"
               value={String(data.customers.total)}
               hint={`${data.customers.newInRange} new in this period`}
+              icon={Users}
+              tint="violet"
             />
           </div>
 
@@ -301,20 +321,48 @@ function RevenueChart({ series }: { series: Dashboard['dailyRevenue'] }) {
   );
 }
 
+/**
+ * A hue per metric, so the four tiles are told apart by shape as well as by
+ * reading them.
+ *
+ * Written out rather than interpolated — `bg-${tint}-50` produces a class name
+ * Tailwind's scanner never sees in the source, so the utility is not emitted
+ * and the tile renders with no background at all.
+ */
+const STAT_TINT = {
+  emerald: 'bg-emerald-50 text-emerald-600 ring-emerald-600/10',
+  sky: 'bg-sky-50 text-sky-600 ring-sky-600/10',
+  amber: 'bg-amber-50 text-amber-600 ring-amber-600/10',
+  violet: 'bg-violet-50 text-violet-600 ring-violet-600/10',
+} as const;
+
 function Stat({
   label,
   value,
   change,
   hint,
+  icon: Icon,
+  tint,
 }: {
   label: string;
   value: string;
   change?: number | null;
   hint?: string;
+  icon?: typeof ArrowUpRight;
+  tint?: keyof typeof STAT_TINT;
 }) {
   return (
-    <div className="rounded-card border border-ink-100 bg-white p-5 shadow-card">
-      <p className="text-xs uppercase tracking-wide text-ink-500">{label}</p>
+    <div className="rounded-card border border-ink-100 bg-white p-5 shadow-card transition-shadow hover:shadow-raised">
+      <div className="flex items-start justify-between gap-3">
+        <p className="text-xs uppercase tracking-wide text-ink-500">{label}</p>
+        {Icon && tint && (
+          <span
+            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-card ring-1 ring-inset ${STAT_TINT[tint]}`}
+          >
+            <Icon size={15} strokeWidth={2} />
+          </span>
+        )}
+      </div>
       <p className="numeric mt-2 text-2xl font-medium tracking-tight text-ink-950">{value}</p>
 
       {change !== undefined && change !== null && (

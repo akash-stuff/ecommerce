@@ -52,6 +52,27 @@ const RESTOCK_ON_CANCEL: OrderStatus[] = [
   'PACKED',
 ];
 
+/**
+ * What a shopper may see of a parcel.
+ *
+ * A select rather than `include: { shipments: true }`, because a shipment row
+ * also carries `tenantId` and `methodId` — internal plumbing that has no
+ * meaning to a customer and no business crossing the wire. What is here is
+ * exactly what the tracking panel renders.
+ */
+const SHOPPER_SHIPMENT = {
+  select: {
+    id: true,
+    provider: true,
+    trackingNumber: true,
+    trackingUrl: true,
+    status: true,
+    shippedAt: true,
+    deliveredAt: true,
+  },
+  orderBy: { createdAt: 'desc' },
+} as const;
+
 @Injectable()
 export class OrdersService {
   private readonly logger = new Logger(OrdersService.name);
@@ -386,7 +407,10 @@ export class OrdersService {
     const [items, total] = await Promise.all([
       this.prisma.db.order.findMany({
         where,
-        include: { items: true },
+        // Shipments come with the list, not from a second request per order:
+        // the account page shows tracking on every card, and N+1 calls for it
+        // would make a ten-order page eleven round trips.
+        include: { items: true, shipments: SHOPPER_SHIPMENT },
         orderBy: { placedAt: 'desc' },
         skip: query.skip,
         take: query.limit,
@@ -402,7 +426,11 @@ export class OrdersService {
 
     const order = await this.prisma.db.order.findFirst({
       where: { orderNumber, customerId },
-      include: { items: true, payments: { select: { status: true, provider: true } } },
+      include: {
+        items: true,
+        payments: { select: { status: true, provider: true } },
+        shipments: SHOPPER_SHIPMENT,
+      },
     });
     if (!order) throw this.notFound();
     return order;

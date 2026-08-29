@@ -5,6 +5,7 @@ import { customerService } from '@/services/customer.service';
 import { useCustomerStore } from '@/store/customer.store';
 import { useStore } from '@/features/theme/ThemeProvider';
 import { formatMoney } from '@/utils/format';
+import { ParcelTracking } from '@/components/ParcelTracking';
 import type { Order } from '@/types/api';
 
 /** Statuses a customer may still call off themselves; the server agrees. */
@@ -157,6 +158,11 @@ function OrderCard({
           </li>
         ))}
       </ul>
+
+      {/* Where the parcel is, on the page a shopper already opens to check.
+          The dispatch email carries the same number, and this is where they
+          come when they have deleted it. */}
+      <ParcelTracking shipments={order.shipments ?? []} />
 
       {canCancel && (
         <button

@@ -12,3 +12,9 @@ coverage/
 # Locally stored uploads. Real deployments use object storage; see
 # docs/DEPLOYMENT.md.
 uploads/
+
+# Rendered email previews, written by `ts-node test/preview-emails.ts`. The
+# script is source; its output is a local artefact for looking at.
+.email-preview/
+.otp-preview/
+.ui-preview/

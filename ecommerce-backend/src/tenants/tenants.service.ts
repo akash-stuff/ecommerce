@@ -13,6 +13,7 @@ import { templateLook } from '../theme/template-look';
 import { TenantResolverService } from './tenant-resolver.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { bareAddress } from '../notifications/mail-address';
 import {
   paginate,
   PaginationQueryDto,
@@ -459,9 +460,3 @@ export class TenantsService {
  * Null when there is nothing that looks like an address at all, so the caller
  * can fall back rather than print a display name where an address belongs.
  */
-function bareAddress(value: string | undefined): string | null {
-  if (!value) return null;
-  const angled = value.match(/<([^>]+)>/);
-  const candidate = (angled ? angled[1] : value).trim();
-  return candidate.includes('@') ? candidate : null;
-}

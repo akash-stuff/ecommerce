@@ -14,6 +14,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ShippingService } from './shipping.service';
 import { ShipmentsService } from './shipments.service';
 import { CreateShipmentDto, UpdateShipmentDto } from './dto/shipment.dto';
+import { COURIERS } from './couriers';
 import { RequirePermissions } from '../common/decorators';
 import { PERMISSIONS } from '../common/rbac/permissions';
 import {
@@ -32,6 +33,30 @@ import {
 @Controller('shipping')
 export class ShippingController {
   constructor(private readonly shipping: ShippingService) {}
+
+  /**
+   * The couriers a dispatch may be recorded against.
+   *
+   * Served rather than hard-coded into the admin bundle so the form offers
+   * exactly what the server will accept — a select whose options and the
+   * validator behind them come from one list cannot drift apart.
+   *
+   * The functions are not serialisable and are not needed by the browser: the
+   * URL is derived server-side, and what the form wants is the name to show
+   * and whether a link can be built at all.
+   */
+  @Get('couriers')
+  @RequirePermissions(PERMISSIONS.SHIPPING_READ)
+  @ApiOperation({ summary: 'Couriers a shipment may name' })
+  listCouriers() {
+    return COURIERS.map(({ code, name, track, site }) => ({
+      code,
+      name,
+      /** False means the shopper gets the code and the carrier's own page. */
+      derivesLink: track !== null,
+      site,
+    }));
+  }
 
   @Get('zones')
   @RequirePermissions(PERMISSIONS.SHIPPING_READ)

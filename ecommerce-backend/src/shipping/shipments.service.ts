@@ -4,6 +4,7 @@ import { PrismaService } from '../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CreateShipmentDto, UpdateShipmentDto } from './dto/shipment.dto';
+import { DEFAULT_COURIER, courierName, trackingUrlFor } from './couriers';
 
 /**
  * Which shipment states are terminal, and which order state each implies.
@@ -77,9 +78,19 @@ export class ShipmentsService {
         data: {
           orderId,
           methodId: dto.methodId ?? order.shippingMethodId ?? null,
-          provider: dto.provider ?? 'MANUAL',
-          trackingNumber: dto.trackingNumber ?? null,
-          trackingUrl: dto.trackingUrl ?? null,
+          provider: dto.provider ?? DEFAULT_COURIER,
+          trackingNumber: dto.trackingNumber?.trim() || null,
+          /**
+           * Derived from the courier and the consignment number when nobody
+           * typed one, so a shopkeeper who picks Delhivery and enters an AWB
+           * gets a working link without knowing the URL format. An explicit
+           * value always wins; see `trackingUrlFor`.
+           */
+          trackingUrl: trackingUrlFor(
+            dto.provider ?? DEFAULT_COURIER,
+            dto.trackingNumber,
+            dto.trackingUrl,
+          ),
           status: dto.status ?? ShipmentStatus.IN_TRANSIT,
           shippedAt: new Date(),
         } as unknown as Prisma.ShipmentCreateInput,
@@ -108,7 +119,12 @@ export class ShipmentsService {
       },
     });
 
-    await this.notifyShipped(order, shipment.trackingNumber, shipment.trackingUrl);
+    await this.notifyShipped(
+      order,
+      shipment.provider,
+      shipment.trackingNumber,
+      shipment.trackingUrl,
+    );
 
     return shipment;
   }
@@ -131,11 +147,33 @@ export class ShipmentsService {
       DELIVERED_STATES.includes(dto.status) &&
       !DELIVERED_STATES.includes(shipment.status);
 
+    /**
+     * Re-derived against the merged result, not the patch.
+     *
+     * Changing the courier without re-deriving would leave the previous
+     * carrier's link on the shipment — a working URL pointing at a company that
+     * is not carrying the parcel, which is worse than no link at all. An
+     * explicit URL in the same request still wins.
+     */
+    const provider = dto.provider ?? shipment.provider;
+    const consignment =
+      dto.trackingNumber !== undefined ? dto.trackingNumber : shipment.trackingNumber;
+    const touchesTracking =
+      dto.provider !== undefined ||
+      dto.trackingNumber !== undefined ||
+      dto.trackingUrl !== undefined;
+
     const updated = await this.prisma.db.$transaction(async (tx) => {
       const row = await tx.shipment.update({
         where: { id },
         data: {
           ...dto,
+          ...(dto.trackingNumber !== undefined
+            ? { trackingNumber: dto.trackingNumber?.trim() || null }
+            : {}),
+          ...(touchesTracking
+            ? { trackingUrl: trackingUrlFor(provider, consignment, dto.trackingUrl) }
+            : {}),
           ...(nowDelivered ? { deliveredAt: new Date() } : {}),
         },
       });
@@ -168,6 +206,7 @@ export class ShipmentsService {
       tenantId: string;
       customerPhone?: string | null;
     },
+    provider: string | null,
     trackingNumber: string | null,
     trackingUrl: string | null,
   ): Promise<void> {
@@ -181,9 +220,11 @@ export class ShipmentsService {
         customerName: order.customerEmail,
         status: 'SHIPPED',
         // Tracking belongs in the email that announces the dispatch, not in a
-        // separate message the customer has to go looking for.
+        // separate message the customer has to go looking for. The carrier is
+        // named rather than coded: "DELHIVERY" is a database value, not
+        // something to put in front of a shopper.
         reason: trackingNumber
-          ? `Tracking: ${trackingNumber}${trackingUrl ? ` — ${trackingUrl}` : ''}`
+          ? `${courierName(provider)} · ${trackingNumber}${trackingUrl ? ` — ${trackingUrl}` : ''}`
           : null,
       }, order.customerPhone);
     } catch {

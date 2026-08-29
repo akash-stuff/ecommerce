@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Truck } from 'lucide-react';
 import { apiClient, unwrap } from '@/services/api-client';
 import { orderService } from '@/services/admin.service';
 import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { StatusBadge } from '@/components/admin/DataTable';
-import { Field, FormError, Input, Modal, Textarea } from '@/components/admin/Modal';
+import { Field, FormError, Input, Modal, Select, Textarea } from '@/components/admin/Modal';
 import { formatMoney } from '@/utils/format';
 import { toast, toastFromError } from '@/components/Toasts';
 
@@ -23,6 +24,25 @@ interface Shipment {
   shippedAt: string | null;
   deliveredAt: string | null;
 }
+
+/** From `GET /shipping/couriers`, so the select cannot offer what the API refuses. */
+interface Courier {
+  code: string;
+  name: string;
+  /** False for carriers with no per-parcel URL: the shopper gets the code instead. */
+  derivesLink: boolean;
+  site: string | null;
+}
+
+/** Where a parcel can be moved to by hand, in the order it actually happens. */
+const SHIPMENT_STATES = [
+  'LABEL_CREATED',
+  'IN_TRANSIT',
+  'OUT_FOR_DELIVERY',
+  'DELIVERED',
+  'FAILED',
+  'RETURNED',
+] as const;
 
 const NEXT_STATUS: Record<string, string[]> = {
   PENDING: ['CONFIRMED', 'CANCELLED'],
@@ -44,6 +64,8 @@ export default function OrderDetail() {
   const [carrier, setCarrier] = useState('');
   const [tracking, setTracking] = useState('');
   const [trackingUrl, setTrackingUrl] = useState('');
+  /** The parcel being corrected, or null. Same fields, different verb. */
+  const [editing, setEditing] = useState<Shipment | null>(null);
 
   const query = useQuery({
     queryKey: ['admin-order', id],
@@ -84,6 +106,19 @@ export default function OrderDetail() {
     enabled: Boolean(id),
   });
 
+  /**
+   * Fetched once and shared with the edit dialog. Cached across orders: the
+   * carrier list is the same on every screen and changes when the platform
+   * ships a new build, not while someone is looking at it.
+   */
+  const couriers = useQuery({
+    queryKey: ['couriers'],
+    queryFn: () => unwrap<Courier[]>(apiClient.get('/shipping/couriers')),
+    staleTime: 60 * 60_000,
+  });
+
+  const chosen = couriers.data?.find((c) => c.code === carrier) ?? null;
+
   const dispatchParcel = useMutation({
     mutationFn: () =>
       unwrap<Shipment>(
@@ -98,6 +133,41 @@ export default function OrderDetail() {
       setCarrier('');
       setTracking('');
       setTrackingUrl('');
+      queryClient.invalidateQueries({ queryKey: ['order-shipments', id] });
+      invalidate();
+    },
+  });
+
+  /**
+   * Correcting a parcel already dispatched.
+   *
+   * A separate mutation from `dispatchParcel` because the two are different
+   * events: dispatching emails the customer and moves the order to SHIPPED,
+   * while fixing a mistyped consignment number should do neither.
+   */
+  const editParcel = useMutation({
+    onError: (e) => toastFromError(e),
+    mutationFn: (patch: {
+      id: string;
+      provider: string;
+      trackingNumber: string;
+      trackingUrl: string;
+      status: string;
+    }) =>
+      unwrap<Shipment>(
+        apiClient.put(`/orders/${id}/shipments/${patch.id}`, {
+          provider: patch.provider,
+          trackingNumber: patch.trackingNumber,
+          // Sent raw, empty included: the API reads an empty string as "derive
+          // it again from the courier", which is how a wrong hand-typed link is
+          // undone.
+          trackingUrl: patch.trackingUrl,
+          status: patch.status,
+        }),
+      ),
+    onSuccess: () => {
+      toast.saved('Parcel updated');
+      setEditing(null);
       queryClient.invalidateQueries({ queryKey: ['order-shipments', id] });
       invalidate();
     },
@@ -274,26 +344,42 @@ export default function OrderDetail() {
             {(shipments.data ?? []).length === 0 ? (
               <p className="mt-2 text-sm text-ink-500">Nothing dispatched yet.</p>
             ) : (
-              <ul className="mt-3 space-y-3 text-sm">
+              <ul className="mt-3 space-y-4 text-sm">
                 {shipments.data!.map((s) => (
-                  <li key={s.id}>
+                  <li key={s.id} className="rounded-card bg-ink-50/60 p-3">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="text-ink-900">{s.provider}</span>
+                      {/* The carrier's name, not the stored code: "ECOM_EXPRESS"
+                          is a database value. */}
+                      <span className="font-medium text-ink-900">
+                        {couriers.data?.find((c) => c.code === s.provider)?.name ?? s.provider}
+                      </span>
                       <StatusBadge value={s.status} />
                     </div>
+
                     {s.trackingNumber && (
-                      <p className="mt-0.5 font-mono text-xs text-ink-500">{s.trackingNumber}</p>
+                      <p className="mt-1 font-mono text-xs text-ink-600">{s.trackingNumber}</p>
                     )}
-                    {s.trackingUrl && (
-                      <a
-                        href={s.trackingUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs underline"
+
+                    <div className="mt-2 flex items-center gap-3">
+                      {s.trackingUrl && (
+                        <a
+                          href={s.trackingUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs font-medium text-brand underline"
+                        >
+                          <Truck size={12} />
+                          Track parcel
+                        </a>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setEditing(s)}
+                        className="text-xs text-ink-600 underline hover:text-ink-950"
                       >
-                        Track parcel
-                      </a>
-                    )}
+                        Edit
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
@@ -345,25 +431,137 @@ export default function OrderDetail() {
             This marks the order shipped and emails the customer their tracking details.
           </p>
           <div className="mt-4 space-y-4">
-            <Field label="Carrier" hint="Whoever is carrying the parcel">
+            <Field label="Courier" hint="Who is carrying the parcel">
+              <Select value={carrier} onChange={(e) => setCarrier(e.target.value)}>
+                <option value="">Choose a courier…</option>
+                {(couriers.data ?? []).map((c) => (
+                  <option key={c.code} value={c.code}>{c.name}</option>
+                ))}
+              </Select>
+            </Field>
+
+            <Field
+              label="Tracking number"
+              hint={
+                chosen?.derivesLink
+                  ? `The link to ${chosen.name} is built from this — you do not need to paste one.`
+                  : 'The consignment or AWB number the courier gave you'
+              }
+            >
               <Input
-                value={carrier}
-                placeholder="Delhivery"
-                onChange={(e) => setCarrier(e.target.value)}
+                value={tracking}
+                className="font-mono"
+                onChange={(e) => setTracking(e.target.value)}
               />
             </Field>
-            <Field label="Tracking number">
-              <Input value={tracking} onChange={(e) => setTracking(e.target.value)} />
-            </Field>
-            <Field label="Tracking URL" hint="Optional; included in the email">
-              <Input
-                value={trackingUrl}
-                placeholder="https://…"
-                onChange={(e) => setTrackingUrl(e.target.value)}
-              />
-            </Field>
+
+            {/* Only offered once a courier is chosen, and worded by whether the
+                link can be derived: for Delhivery this is an override nobody
+                needs, and for India Post it is the only way to get one. */}
+            {carrier && (
+              <Field
+                label="Tracking link"
+                hint={
+                  chosen?.derivesLink
+                    ? 'Optional. Leave empty and it is built for you.'
+                    : `${chosen?.name ?? 'This courier'} has no per-parcel link, so the customer gets the number and the courier's own page. Paste a link here to override that.`
+                }
+              >
+                <Input
+                  value={trackingUrl}
+                  placeholder="https://…"
+                  onChange={(e) => setTrackingUrl(e.target.value)}
+                />
+              </Field>
+            )}
           </div>
           <FormError error={dispatchParcel.error} />
+        </Modal>
+      )}
+
+      {/* Correcting a parcel already sent. Deliberately does not re-email the
+          customer: fixing a mistyped digit is not a second dispatch. */}
+      {editing && (
+        <Modal
+          title="Update this parcel"
+          onClose={() => setEditing(null)}
+          footer={
+            <>
+              <SecondaryButton onClick={() => setEditing(null)}>Cancel</SecondaryButton>
+              <PrimaryButton
+                disabled={editParcel.isPending}
+                onClick={() =>
+                  editParcel.mutate({
+                    id: editing.id,
+                    provider: editing.provider,
+                    trackingNumber: editing.trackingNumber ?? '',
+                    trackingUrl: editing.trackingUrl ?? '',
+                    status: editing.status,
+                  })
+                }
+              >
+                {editParcel.isPending ? 'Saving…' : 'Save parcel'}
+              </PrimaryButton>
+            </>
+          }
+        >
+          <p className="text-sm text-ink-700">
+            The customer is not emailed again — this is for correcting what was recorded.
+          </p>
+          <div className="mt-4 space-y-4">
+            <Field label="Courier">
+              <Select
+                value={editing.provider}
+                onChange={(e) => setEditing({ ...editing, provider: e.target.value })}
+              >
+                {/* A parcel saved before the courier list existed carries free
+                    text. It is offered back rather than silently reassigned to
+                    whichever carrier happens to sort first. */}
+                {!(couriers.data ?? []).some((c) => c.code === editing.provider) && (
+                  <option value={editing.provider}>{editing.provider} (as recorded)</option>
+                )}
+                {(couriers.data ?? []).map((c) => (
+                  <option key={c.code} value={c.code}>{c.name}</option>
+                ))}
+              </Select>
+            </Field>
+
+            <Field label="Tracking number">
+              <Input
+                value={editing.trackingNumber ?? ''}
+                className="font-mono"
+                onChange={(e) => setEditing({ ...editing, trackingNumber: e.target.value })}
+              />
+            </Field>
+
+            <Field
+              label="Tracking link"
+              hint="Empty rebuilds it from the courier and the number above."
+            >
+              <Input
+                value={editing.trackingUrl ?? ''}
+                placeholder="https://…"
+                onChange={(e) => setEditing({ ...editing, trackingUrl: e.target.value })}
+              />
+            </Field>
+
+            <Field
+              label="Where the parcel is"
+              hint="Marking it delivered also marks the order delivered."
+            >
+              <Select
+                value={editing.status}
+                onChange={(e) => setEditing({ ...editing, status: e.target.value })}
+              >
+                {SHIPMENT_STATES.map((state) => (
+                  <option key={state} value={state}>
+                    {state.toLowerCase().replace(/_/g, ' ')}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          </div>
+          <FormError error={editParcel.error} />
         </Modal>
       )}
 

@@ -180,6 +180,23 @@ export interface OrderItem {
   lineTotal: string;
 }
 
+/**
+ * A parcel, as a shopper sees it.
+ *
+ * `provider` is the stored courier code — `courierLabel` turns it into
+ * something to show. There is deliberately no `methodId` or `tenantId` here:
+ * the API selects only these fields for the customer endpoints.
+ */
+export interface Shipment {
+  id: string;
+  provider: string;
+  trackingNumber: string | null;
+  trackingUrl: string | null;
+  status: string;
+  shippedAt: string | null;
+  deliveredAt: string | null;
+}
+
 export interface Order {
   id: string;
   orderNumber: string;
@@ -195,6 +212,8 @@ export interface Order {
   customerEmail: string;
   shippingAddress: OrderAddress;
   items: OrderItem[];
+  /** Absent on an order placed before anything was dispatched. */
+  shipments?: Shipment[];
   placedAt: string;
 }
 

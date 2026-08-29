@@ -164,7 +164,10 @@ export function EmptyState({
   return (
     <div className="rounded-card border border-dashed border-ink-200 bg-white px-6 py-14 text-center">
       {icon && (
-        <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-ink-50 text-ink-400">
+        // Tinted with the store's own colour rather than left grey: an empty
+        // screen is where an owner decides the software is broken, and a
+        // washed-out mark reads as one more thing that has not loaded.
+        <div className="mx-auto mb-3 flex h-11 w-11 items-center justify-center rounded-full bg-brand/[0.08] text-brand ring-1 ring-inset ring-brand/10">
           {icon}
         </div>
       )}

@@ -171,39 +171,99 @@ export function DataTable<T>({
   );
 }
 
-/** Neutral by default; only states that need attention get colour. */
-export function StatusBadge({ value }: { value: string }) {
-  const tone: Record<string, string> = {
-    active: 'bg-green-50 text-green-700 ring-green-600/15',
-    // A page is published, not "active" — the pair a shopkeeper is choosing
-    // between on that screen is published/draft.
-    published: 'bg-green-50 text-green-700 ring-green-600/15',
-    paid: 'bg-green-50 text-green-700 ring-green-600/15',
-    sent: 'bg-green-50 text-green-700 ring-green-600/15',
-    delivered: 'bg-green-50 text-green-700 ring-green-600/15',
-    queued: 'bg-amber-50 text-amber-800 ring-amber-600/15',
-    confirmed: 'bg-blue-50 text-blue-700 ring-blue-600/15',
-    shipped: 'bg-blue-50 text-blue-700 ring-blue-600/15',
-    pending: 'bg-amber-50 text-amber-800 ring-amber-600/15',
-    failed: 'bg-red-50 text-red-700 ring-red-600/15',
-    cancelled: 'bg-red-50 text-red-700 ring-red-600/15',
-    refunded: 'bg-red-50 text-red-700 ring-red-600/15',
-    archived: 'bg-ink-100 text-ink-500 ring-ink-950/10',
-    retired: 'bg-ink-100 text-ink-500 ring-ink-950/10',
-    draft: 'bg-ink-100 text-ink-500 ring-ink-950/10',
-    'opted out': 'bg-ink-100 text-ink-500 ring-ink-950/10',
-    suspended: 'bg-amber-50 text-amber-800 ring-amber-600/15',
-    subscribed: 'bg-green-50 text-green-700 ring-green-600/15',
-  };
+/**
+ * A state, in a colour that means something.
+ *
+ * Grouped by what the reader should *do* rather than by which table the value
+ * came from: green is settled, blue is moving, amber wants attention, red went
+ * wrong, and grey is inert. That is why `paid`, `delivered` and `subscribed`
+ * share one tone — a shopkeeper scanning a list is asking "is anything wrong",
+ * not "which enum is this".
+ *
+ * The dot is not decoration. Colour alone fails for the ~8% of men with a
+ * colour-vision deficiency, and red/green is the exact pair they lose; the dot
+ * plus the word carries the meaning without it.
+ */
+const TONES = {
+  /** Done, and nothing to do. */
+  settled: 'bg-green-50 text-green-700 ring-green-600/20',
+  /** In motion. Nothing is wrong; nothing is finished either. */
+  moving: 'bg-blue-50 text-blue-700 ring-blue-600/20',
+  /** Waiting on somebody, usually the shopkeeper. */
+  waiting: 'bg-amber-50 text-amber-800 ring-amber-600/20',
+  /** Went wrong, or was undone. */
+  wrong: 'bg-red-50 text-red-700 ring-red-600/20',
+  /** Real, but not in play. */
+  inert: 'bg-ink-100 text-ink-600 ring-ink-950/10',
+} as const;
 
+const DOTS = {
+  settled: 'bg-green-500',
+  moving: 'bg-blue-500',
+  waiting: 'bg-amber-500',
+  wrong: 'bg-red-500',
+  inert: 'bg-ink-400',
+} as const;
+
+type Tone = keyof typeof TONES;
+
+const STATE_TONE: Record<string, Tone> = {
+  // Orders
+  pending: 'waiting',
+  confirmed: 'moving',
+  processing: 'moving',
+  packed: 'moving',
+  shipped: 'moving',
+  delivered: 'settled',
+  cancelled: 'wrong',
+  refunded: 'wrong',
+
+  // Parcels. These had no entry at all before couriers were added, so every
+  // one of them fell through to the neutral default.
+  label_created: 'waiting',
+  in_transit: 'moving',
+  out_for_delivery: 'moving',
+  failed: 'wrong',
+  returned: 'waiting',
+
+  // Payments
+  paid: 'settled',
+  authorized: 'moving',
+  partially_refunded: 'waiting',
+
+  // Notifications
+  sent: 'settled',
+  queued: 'waiting',
+
+  // Catalogue and content. A page is published, not "active" — the pair a
+  // shopkeeper is choosing between on that screen is published/draft.
+  active: 'settled',
+  published: 'settled',
+  draft: 'inert',
+  archived: 'inert',
+  retired: 'inert',
+
+  // Domains
+  verifying: 'waiting',
+
+  // People and lists
+  suspended: 'waiting',
+  subscribed: 'settled',
+  'opted out': 'inert',
+  inactive: 'inert',
+};
+
+export function StatusBadge({ value }: { value: string }) {
   const key = value.toLowerCase();
+  const tone: Tone = STATE_TONE[key] ?? 'inert';
+
   return (
     <span
-      className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs capitalize ring-1 ring-inset ${
-        tone[key] ?? 'bg-ink-50 text-ink-700 ring-ink-950/10'
-      }`}
+      className={`inline-flex items-center gap-1.5 whitespace-nowrap rounded-full px-2 py-0.5 text-xs capitalize ring-1 ring-inset ${TONES[tone]}`}
     >
+      <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${DOTS[tone]}`} aria-hidden="true" />
       {key.replace(/_/g, ' ')}
     </span>
   );
 }
+

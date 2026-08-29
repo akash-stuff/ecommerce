@@ -234,3 +234,172 @@
     transform: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   The verification code field
+   ---------------------------------------------------------------------------
+   Six boxes drawn under one real input. See CodeInput.tsx for why it is built
+   that way; this is only what it looks like.
+
+   Keyframes rather than Tailwind utilities, for the same reason the order-placed
+   tick uses them: these are sequences with their own stagger and easing, not
+   single transitions, and one of them is driven by a per-cell custom property.
+
+   Every rule here is undone by the reduced-motion block at the end, which shows
+   the finished state rather than removing the animation — a cell that animates
+   in and is then told not to animate would otherwise never appear at all. */
+
+.otp-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  /* The value is rendered by the cells beneath; this field only holds it. */
+  color: transparent;
+  caret-color: transparent;
+  /* 16px even though nothing is visible: below it, iOS Safari zooms the page on
+     focus and leaves the shopper scrolled sideways in the middle of a code. */
+  font-size: 16px;
+  letter-spacing: 0;
+  text-align: center;
+  outline: none;
+  /* The input has to be on top to take the tap, the focus and the paste. */
+  z-index: 1;
+  cursor: pointer;
+}
+
+.otp-input::selection {
+  background: transparent;
+}
+
+/* Chrome paints an autofill background that no background-color overrides.
+   Deferring the transition by a decade is the only reliable defeat, and without
+   it a yellow slab covers all six boxes the moment a password manager fires. */
+.otp-input:-webkit-autofill,
+.otp-input:-webkit-autofill:focus {
+  -webkit-text-fill-color: transparent;
+  transition: background-color 600000s 0s;
+}
+
+.otp-cells {
+  display: flex;
+  gap: 8px;
+}
+
+.otp-cell {
+  position: relative;
+  /* Equal shares of the row, shrinking together: six fixed-width boxes overflow
+     a 320px screen, and a code that runs off the edge cannot be checked. */
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 60px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid theme('colors.ink.200');
+  border-radius: theme('borderRadius.card');
+  background-color: #fff;
+  font-size: 22px;
+  font-weight: 600;
+  color: theme('colors.ink.950');
+  font-variant-numeric: tabular-nums;
+  transition: border-color 160ms ease-out, box-shadow 160ms ease-out,
+    transform 160ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.otp-cell-filled {
+  border-color: theme('colors.ink.400');
+}
+
+/* The box being typed into. Lifted a hair, so the active cell is findable
+   without relying on colour alone — a brand colour can be any hue at all. */
+.otp-cell-active {
+  border-color: rgb(var(--brand-primary));
+  box-shadow: 0 0 0 3px rgb(var(--brand-primary) / 0.14);
+  transform: translateY(-1px);
+}
+
+.otp-cell-complete {
+  border-color: rgb(var(--brand-primary) / 0.55);
+}
+
+.otp-cell-invalid {
+  border-color: theme('colors.red.400');
+  box-shadow: none;
+}
+
+/* A digit landing. Keyed by its character in the component, so remounting is
+   what replays this — a CSS animation on a node that stays put plays once. */
+.otp-digit {
+  display: block;
+  animation: otp-digit-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Our own caret, because the real one is hidden. A bar rather than a blinking
+   underscore, to match the shape of the digit that will replace it. */
+.otp-caret {
+  display: block;
+  width: 2px;
+  height: 26px;
+  border-radius: 1px;
+  background-color: rgb(var(--brand-primary));
+  animation: otp-caret-blink 1.1s step-end infinite;
+}
+
+/* All six arriving at once — a paste, or the platform offering the code from
+   the notification. A quick left-to-right sweep reads as the form catching the
+   code; the same stagger applied while somebody types would read as lag, which
+   is why the component tells the two apart before adding this class. */
+.otp-bulk .otp-cell {
+  animation: otp-land 340ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation-delay: calc(var(--i) * 45ms);
+}
+
+.otp-shake {
+  animation: otp-shake 400ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes otp-digit-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.9); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@keyframes otp-caret-blink {
+  0%, 50%   { opacity: 1; }
+  50.01%, 100% { opacity: 0; }
+}
+
+@keyframes otp-land {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.07); border-color: rgb(var(--brand-primary)); }
+  100% { transform: scale(1); }
+}
+
+@keyframes otp-shake {
+  0%, 100%      { transform: translateX(0); }
+  15%, 55%      { transform: translateX(-6px); }
+  35%, 75%      { transform: translateX(6px); }
+  90%           { transform: translateX(-2px); }
+}
+
+/* The boxes and the digits in them still have to be *there* for someone who has
+   asked for less motion, so the end state is asserted rather than the animation
+   simply dropped. The caret stops blinking and stays visible, which is still a
+   clear enough marker of where typing will land. */
+@media (prefers-reduced-motion: reduce) {
+  .otp-digit,
+  .otp-caret,
+  .otp-bulk .otp-cell,
+  .otp-shake {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+  .otp-cell {
+    transition: none;
+  }
+}

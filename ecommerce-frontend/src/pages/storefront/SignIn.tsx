@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { customerService } from '@/services/customer.service';
 import { useCustomerStore } from '@/store/customer.store';
 import { useStore } from '@/features/theme/ThemeProvider';
 import { toast } from '@/components/Toasts';
+import { CodeInput } from '@/components/CodeInput';
 
 /**
  * Sign in, register, verify and reset — one screen, four modes.
@@ -43,6 +44,14 @@ export default function SignIn() {
   const [newPassword, setNewPassword] = useState('');
   const [resendIn, setResendIn] = useState(0);
   const [expiresIn, setExpiresIn] = useState(0);
+  /**
+   * Counts rejected attempts rather than recording that one happened.
+   *
+   * The boxes shake when this changes. A boolean could not express "wrong
+   * again": on the second wrong code it is already true, nothing changes, and
+   * the shopper gets no feedback at all for a retry that also failed.
+   */
+  const [rejected, setRejected] = useState(0);
 
   const busy = status === 'loading';
   const awaitingCode = mode === 'verify' || mode === 'reset';
@@ -123,6 +132,8 @@ export default function SignIn() {
       navigate(redirectTo, { replace: true });
     } catch (e) {
       setError((e as { message?: string }).message ?? 'Something went wrong.');
+      // Only the code screens have something to shake.
+      if (awaitingCode) setRejected((n) => n + 1);
     }
   };
 
@@ -198,7 +209,18 @@ export default function SignIn() {
 
         {awaitingCode && (
           <>
-            <CodeInput value={code} onChange={setCode} />
+            <CodeInput
+              value={code}
+              onChange={(next) => {
+                setCode(next);
+                // The red state belongs to the code that was refused, not to
+                // the one being typed to replace it.
+                if (error) setError(null);
+              }}
+              disabled={busy}
+              invalid={Boolean(error)}
+              attempt={rejected}
+            />
 
             {expiresIn > 0 ? (
               <p className="surface-muted text-xs">Expires in {formatClock(expiresIn)}</p>
@@ -371,44 +393,6 @@ function AuthShell({ children }: { children: React.ReactNode }) {
 
       <div className="flex items-center justify-center">{form}</div>
     </div>
-  );
-}
-
-/**
- * One wide input rather than six boxes.
- *
- * Six separate boxes look the part and fight the platform: paste splits across
- * them unevenly, backspace behaviour has to be reimplemented, and screen readers
- * announce six unlabelled fields. A single field with `one-time-code` lets iOS
- * and Android offer the code from the notification, which is the feature that
- * actually saves typing.
- */
-function CodeInput({ value, onChange }: { value: string; onChange: (v: string) => void }) {
-  const ref = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    ref.current?.focus();
-  }, []);
-
-  return (
-    <label className="block text-sm">
-      <span className="text-ink-700">Verification code</span>
-      <input
-        ref={ref}
-        required
-        // `text` with a numeric hint, not `number`: a number input strips the
-        // leading zero a code can start with, and shows spinner arrows.
-        type="text"
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        maxLength={7}
-        placeholder="123456"
-        value={value}
-        // Digits only, so a pasted "123 456" arrives clean.
-        onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 6))}
-        className="mt-1.5 w-full rounded-card border border-ink-200 bg-white px-3 py-3 text-center text-2xl font-semibold tracking-[0.4em] text-ink-950 focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand"
-      />
-    </label>
   );
 }
 

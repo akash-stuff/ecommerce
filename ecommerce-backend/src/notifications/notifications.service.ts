@@ -15,10 +15,12 @@ import {
   passwordResetCode,
   staffInvited,
   storeSetup,
+  type EmailBrand,
   type OrderEmailData,
   type RenderedEmail,
   type StatusEmailData,
 } from './templates';
+import { BRAND_DEFAULTS } from '../theme/brand-defaults';
 
 /**
  * Text channels, in the order they are preferred.
@@ -52,6 +54,93 @@ export class NotificationsService {
     private readonly sms: SmsService,
   ) {}
 
+  // --- Branding --------------------------------------------------------------
+
+  /**
+   * The store's identity, for the email about to be rendered.
+   *
+   * Resolved here rather than threaded from the ten call sites, for three
+   * reasons. It is correct at the one site that cannot do it itself — store
+   * provisioning runs in a platform-admin context, where the ambient tenant is
+   * not the tenant being provisioned, so `prisma.db.store.findFirst()` there
+   * returns the wrong store or none. It puts the sanitising of a colour and a
+   * URL in one place instead of ten, which matters because both reach contexts
+   * that HTML-escaping does not make safe. And it stops the drift that had
+   * already happened: `sendOrderEmail` selected the theme and `sendStatusEmail`,
+   * fifty lines below it in the same class, did not.
+   *
+   * `runUnscoped` with an explicit `where`, matching how this file already
+   * reads the Notification table — the ambient tenant is not trustworthy here,
+   * so the isolation is stated rather than inherited.
+   *
+   * Never throws. A branding lookup must not be able to fail a receipt.
+   */
+  private async brandFor(tenantId: string, fallbackEmail: string): Promise<EmailBrand> {
+    const platformDefault: EmailBrand = {
+      storeName: 'The store',
+      storeEmail: fallbackEmail,
+      brandColor: BRAND_DEFAULTS.PRIMARY,
+      logoUrl: null,
+      storefrontUrl: null,
+    };
+
+    try {
+      const store = await this.prisma.runUnscoped((db) =>
+        db.store.findFirst({
+          where: { tenantId },
+          select: {
+            name: true,
+            email: true,
+            theme: { select: { primaryColor: true, logoUrl: true } },
+          },
+        }),
+      );
+
+      if (!store) return platformDefault;
+
+      return {
+        storeName: store.name,
+        storeEmail: store.email,
+        // Validated by the template layer too; sent as-is here so a bad stored
+        // value is corrected in exactly one place.
+        brandColor: store.theme?.primaryColor ?? BRAND_DEFAULTS.PRIMARY,
+        logoUrl: store.theme?.logoUrl ?? null,
+        storefrontUrl: await this.storefrontUrl(tenantId),
+      };
+    } catch (error) {
+      this.logger.warn(
+        `Could not resolve branding for tenant ${tenantId}: ${(error as Error).message}`,
+      );
+      return platformDefault;
+    }
+  }
+
+  /**
+   * Where this store's shoppers actually reach it, or null.
+   *
+   * Null is a real answer and the templates handle it: a store with no verified
+   * domain yet gets an email with no button rather than a button that goes
+   * nowhere. The primary domain is preferred, and only an ACTIVE one counts —
+   * linking a shopper at a hostname that does not resolve is worse than not
+   * linking at all.
+   */
+  private async storefrontUrl(tenantId: string): Promise<string | null> {
+    const domain = await this.prisma.runUnscoped((db) =>
+      db.domain.findFirst({
+        where: { tenantId, status: 'ACTIVE' },
+        orderBy: [{ isPrimary: 'desc' }, { createdAt: 'asc' }],
+        select: { hostname: true },
+      }),
+    );
+
+    if (!domain) return null;
+
+    // A `.localhost` host is a development one, served over http on the Vite
+    // port; anything else terminates TLS on 443. Same rule as tenants.service.
+    const local = domain.hostname === 'localhost' || domain.hostname.endsWith('.localhost');
+    return local ? `http://${domain.hostname}:5173` : `https://${domain.hostname}`;
+  }
+
   // --- Public senders --------------------------------------------------------
 
   /**
@@ -65,12 +154,15 @@ export class NotificationsService {
     data: OrderEmailData,
     phone?: string | null,
   ): Promise<void> {
+    const brand = await this.brandFor(tenantId, to);
+
     await this.deliverEmail({
       tenantId,
       event: 'order.placed',
       to,
       payload: { orderNumber: data.orderNumber, grandTotal: data.grandTotal },
-      rendered: orderConfirmation(data),
+      rendered: orderConfirmation(data, brand),
+      fromName: brand.storeName,
     });
 
     await this.deliverText({
@@ -88,12 +180,15 @@ export class NotificationsService {
     data: StatusEmailData,
     phone?: string | null,
   ): Promise<void> {
+    const brand = await this.brandFor(tenantId, to);
+
     await this.deliverEmail({
       tenantId,
       event: `order.${data.status.toLowerCase()}`,
       to,
       payload: { orderNumber: data.orderNumber, status: data.status },
-      rendered: orderStatusChanged(data),
+      rendered: orderStatusChanged(data, brand),
+      fromName: brand.storeName,
     });
 
     // Null for the statuses not worth a text; see sms-templates.
@@ -106,19 +201,22 @@ export class NotificationsService {
     });
   }
 
-  customerRegistered(
+  async customerRegistered(
     to: string,
     tenantId: string,
     data: { storeName: string; storeEmail: string; customerName: string },
   ) {
     // Email only, deliberately. A text message triggered by signing up is
     // marketing, not a transaction, and consent for it has not been asked for.
+    const brand = await this.brandFor(tenantId, to);
+
     return this.deliverEmail({
       tenantId,
       event: 'customer.registered',
       to,
       payload: {},
-      rendered: customerWelcome(data),
+      rendered: customerWelcome(data, brand),
+      fromName: brand.storeName,
     });
   }
 
@@ -135,7 +233,7 @@ export class NotificationsService {
    * stored, which is unavoidable if a failed send is to be replayable, and is
    * why `forget()` clears the challenge as soon as it is spent.
    */
-  emailVerificationCode(
+  async emailVerificationCode(
     to: string,
     tenantId: string,
     data: {
@@ -145,12 +243,15 @@ export class NotificationsService {
       expiresInMinutes: number;
     },
   ) {
+    const brand = await this.brandFor(tenantId, to);
+
     return this.deliverEmail({
       tenantId,
       event: 'customer.emailVerification',
       to,
       payload: { expiresInMinutes: data.expiresInMinutes },
-      rendered: emailVerificationCode(data),
+      rendered: emailVerificationCode(data, brand),
+      fromName: brand.storeName,
     });
   }
 
@@ -163,7 +264,7 @@ export class NotificationsService {
    * succeeded. A store with no welcome email is recoverable — the platform
    * console can resend it — while a rolled-back store is not.
    */
-  storeSetup(
+  async storeSetup(
     to: string,
     tenantId: string,
     data: {
@@ -175,12 +276,15 @@ export class NotificationsService {
       supportEmail: string;
     },
   ) {
+    const brand = await this.brandFor(tenantId, to);
+
     return this.deliverEmail({
       tenantId,
       event: 'store.setup',
       to,
       payload: { adminUrl: data.adminUrl, storefrontUrl: data.storefrontUrl },
-      rendered: storeSetup({ ...data, email: to }),
+      rendered: storeSetup({ ...data, email: to }, brand),
+      fromName: brand.storeName,
     });
   }
 
@@ -191,17 +295,20 @@ export class NotificationsService {
    * nobody asked for is marketing, and consent for it was not given by typing
    * an email address into a form.
    */
-  newsletterSubscribed(
+  async newsletterSubscribed(
     to: string,
     tenantId: string,
     data: { storeName: string; storeEmail: string; alreadySubscribed: boolean },
   ) {
+    const brand = await this.brandFor(tenantId, to);
+
     return this.deliverEmail({
       tenantId,
       event: 'newsletter.subscribed',
       to,
       payload: { alreadySubscribed: data.alreadySubscribed },
-      rendered: newsletterWelcome(data),
+      rendered: newsletterWelcome(data, brand),
+      fromName: brand.storeName,
     });
   }
 
@@ -211,32 +318,38 @@ export class NotificationsService {
    * Carries no password: see the template for why a stored body must not hold
    * a credential that never expires.
    */
-  staffInvited(
+  async staffInvited(
     to: string,
     tenantId: string,
     data: { storeName: string; storeEmail: string; firstName: string; role: string; signInUrl: string },
   ) {
+    const brand = await this.brandFor(tenantId, to);
+
     return this.deliverEmail({
       tenantId,
       event: 'staff.invited',
       to,
       payload: { role: data.role },
-      rendered: staffInvited(data),
+      rendered: staffInvited(data, brand),
+      fromName: brand.storeName,
     });
   }
 
   /** The reset code. Awaited, like the verification one, for the same reason. */
-  passwordResetCode(
+  async passwordResetCode(
     to: string,
     tenantId: string,
     data: { storeName: string; storeEmail: string; code: string; expiresInMinutes: number },
   ) {
+    const brand = await this.brandFor(tenantId, to);
+
     return this.deliverEmail({
       tenantId,
       event: 'customer.passwordReset',
       to,
       payload: { expiresInMinutes: data.expiresInMinutes },
-      rendered: passwordResetCode(data),
+      rendered: passwordResetCode(data, brand),
+      fromName: brand.storeName,
     });
   }
 
@@ -412,6 +525,7 @@ export class NotificationsService {
     to: string;
     payload: Record<string, unknown>;
     rendered: RenderedEmail;
+    fromName?: string;
   }): Promise<void> {
     const notificationId = await this.queue({
       tenantId: input.tenantId,
@@ -435,6 +549,10 @@ export class NotificationsService {
       subject: input.rendered.subject,
       html: input.rendered.html,
       text: input.rendered.text,
+      // The store's name in the sender line, not the platform's. An email that
+      // is branded inside and says "Everystore" in the inbox list has failed at
+      // the one place a white-label platform is most visible.
+      fromName: input.fromName,
     });
 
     await this.record(notificationId, result).catch((e) =>

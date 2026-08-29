@@ -17,6 +17,25 @@ import { PERMISSIONS } from '@/config/permissions';
  * reading all fifteen labels. The groups are the shopkeeper's own division of
  * the work — what you sell, what you have sold, who you sell to — not ours.
  */
+/**
+ * A hue per group, carried by the icons and the group label.
+ *
+ * Colour used to *find* things rather than to decorate: the four groups are
+ * the four kinds of work a shopkeeper does, and a sidebar of nineteen identical
+ * grey rows makes reaching Shipping a matter of reading all nineteen. With the
+ * groups tinted, the eye lands on the right quarter of the list first.
+ *
+ * It stays on the resting state only. The selected row is the tenant's brand
+ * colour, as before — that one saturated thing on the screen is still the
+ * store's own, and a group hue competing with it would undo the point.
+ */
+const GROUP_TINT: Record<string, { icon: string; label: string }> = {
+  Selling: { icon: 'text-emerald-600', label: 'text-emerald-700/70' },
+  Catalogue: { icon: 'text-violet-600', label: 'text-violet-700/70' },
+  Storefront: { icon: 'text-amber-600', label: 'text-amber-700/70' },
+  Operations: { icon: 'text-sky-600', label: 'text-sky-700/70' },
+};
+
 const NAV: { group: string; items: NavItem[] }[] = [
   {
     group: 'Selling',
@@ -118,7 +137,11 @@ export function AdminLayout() {
       <nav className="flex-1 overflow-y-auto px-3 pb-2">
         {groups.map(({ group, items }) => (
           <div key={group} className="mb-4 last:mb-0">
-            <p className="px-3 pb-1.5 text-[11px] font-medium uppercase tracking-wider text-ink-400">
+            <p
+              className={`px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider ${
+                GROUP_TINT[group]?.label ?? 'text-ink-400'
+              }`}
+            >
               {group}
             </p>
             <div className="space-y-0.5">
@@ -141,7 +164,11 @@ export function AdminLayout() {
                       <Icon
                         size={16}
                         strokeWidth={1.75}
-                        className={isActive ? '' : 'text-ink-400 group-hover:text-ink-700'}
+                        className={
+                          isActive
+                            ? ''
+                            : `${GROUP_TINT[group]?.icon ?? 'text-ink-400'} opacity-80 transition-opacity group-hover:opacity-100`
+                        }
                       />
                       {label}
                     </>

@@ -1,6 +1,7 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createTransport, type Transporter } from 'nodemailer';
+import { fromHeader } from './mail-address';
 
 export type SendResult =
   | { sent: true; messageId: string }
@@ -102,6 +103,14 @@ export class MailerService implements OnModuleDestroy, OnModuleInit {
     html: string;
     text: string;
     replyTo?: string;
+    /**
+     * The store's name, shown in front of the configured address.
+     *
+     * Only the display name changes; the address is left exactly as configured,
+     * because rewriting it would break SPF and DKIM alignment for every tenant.
+     * See `fromHeader`.
+     */
+    fromName?: string;
   }): Promise<SendResult> {
     if (!this.isConfigured()) {
       // Logged in full so the content is reviewable without a mail server, and
@@ -115,7 +124,7 @@ export class MailerService implements OnModuleDestroy, OnModuleInit {
 
     try {
       const info = await this.transport().sendMail({
-        from: this.from,
+        from: fromHeader(this.from, message.fromName),
         to: message.to,
         subject: message.subject,
         html: message.html,
