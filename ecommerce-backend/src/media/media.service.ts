@@ -22,7 +22,7 @@ export interface UploadedFile {
 }
 
 /** What a store's upload is for. Decides the key prefix, nothing more. */
-export type TenantMediaPurpose = 'product' | 'theme' | 'banner' | 'category';
+export type TenantMediaPurpose = 'product' | 'theme' | 'banner' | 'category' | 'page';
 
 /**
  * What a platform-level upload is for. Kept as its own type so the compiler,

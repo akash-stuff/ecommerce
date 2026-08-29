@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Check, Copy, RefreshCw, Trash2 } from 'lucide-react';
 import { apiClient, unwrap } from '@/services/api-client';
+import { invoiceService, type InvoiceSettings } from '@/services/admin.service';
 import {
   domainStatusMessage,
   type DomainVerifyResult,
@@ -43,6 +44,7 @@ export default function Settings() {
     description: '',
     metaTitle: '',
     metaDescription: '',
+    productDescription: '',
     isPublished: false,
   });
 
@@ -54,6 +56,7 @@ export default function Settings() {
       description: s.description ?? '',
       metaTitle: s.metaTitle ?? '',
       metaDescription: s.metaDescription ?? '',
+      productDescription: s.productDescription ?? '',
       isPublished: s.isPublished,
     });
   }, [store.data]);
@@ -69,6 +72,13 @@ export default function Settings() {
           description: draft.description || undefined,
           metaTitle: draft.metaTitle || undefined,
           metaDescription: draft.metaDescription || undefined,
+          /**
+           * Sent raw, empty included. The API reads an absent field as "not
+           * editing this", so `|| undefined` would make clearing this block
+           * impossible — the save would succeed and every product page would
+           * keep showing it.
+           */
+          productDescription: draft.productDescription,
           isPublished: draft.isPublished,
         }),
       ),
@@ -124,6 +134,27 @@ export default function Settings() {
           </FormGrid>
         </Card>
 
+        <Card title="Product pages">
+          <Field
+            label="Shown under every product"
+            hint={`${draft.productDescription.length}/2000 · delivery, returns, care — written once, shown below each product's own description`}
+          >
+            <Textarea
+              rows={4}
+              maxLength={2000}
+              value={draft.productDescription}
+              placeholder={
+                'Free delivery on orders over ₹999.\nReturns accepted within 7 days, unused and in original packaging.'
+              }
+              onChange={(e) => setDraft({ ...draft, productDescription: e.target.value })}
+            />
+          </Field>
+          <p className="mt-2 text-xs text-ink-500">
+            Plain text — it is rendered as words, never as markup. Leave it empty and nothing
+            extra appears.
+          </p>
+        </Card>
+
         <Card title="Visibility">
           <Field
             label="Storefront"
@@ -151,9 +182,224 @@ export default function Settings() {
           </PrimaryButton>
         </div>
 
+        <Invoicing />
+
         <Domains />
       </div>
     </Page>
+  );
+}
+
+/**
+ * The details printed on every invoice a shopper downloads.
+ *
+ * Its own section with its own save, not folded into the store form above:
+ * these are the shop's *legal* identity — registered name, GSTIN, registered
+ * address — and they are edited on their own occasion, usually once, often by
+ * someone reading them off a certificate.
+ *
+ * Nothing here is required. Every field falls back to the store's trading
+ * details, and the panel says what an invoice would print today so a shop that
+ * has filled in none of it can see that its invoices already work.
+ */
+function Invoicing() {
+  const queryClient = useQueryClient();
+  const [draft, setDraft] = useState<Record<string, string> | null>(null);
+
+  const settings = useQuery({
+    queryKey: ['invoice-settings'],
+    queryFn: invoiceService.settings,
+  });
+
+  useEffect(() => {
+    const s = settings.data;
+    if (!s) return;
+    setDraft({
+      businessName: s.businessName ?? '',
+      gstin: s.gstin ?? '',
+      pan: s.pan ?? '',
+      addressLine1: s.addressLine1 ?? '',
+      addressLine2: s.addressLine2 ?? '',
+      city: s.city ?? '',
+      state: s.state ?? '',
+      postalCode: s.postalCode ?? '',
+      email: s.email ?? '',
+      phone: s.phone ?? '',
+      prefix: s.prefix ?? 'INV-',
+      notes: s.notes ?? '',
+    });
+  }, [settings.data]);
+
+  const save = useMutation({
+    onError: (e) => toastFromError(e),
+    // Sent whole, blanks included: an emptied field is how an override is
+    // removed and the store's own detail restored.
+    mutationFn: (d: Record<string, string>) => invoiceService.saveSettings(d),
+    onSuccess: (updated: InvoiceSettings) => {
+      toast.saved('Invoicing saved');
+      queryClient.setQueryData(['invoice-settings'], updated);
+    },
+  });
+
+  if (!draft) {
+    return (
+      <Card title="Invoicing">
+        <p className="text-sm text-ink-500">Loading…</p>
+      </Card>
+    );
+  }
+
+  const set = (key: string, value: string) => setDraft({ ...draft, [key]: value });
+  const effective = settings.data?.effective;
+
+  return (
+    <Card title="Invoicing">
+      <p className="-mt-2 mb-4 text-sm text-ink-500">
+        Printed on the invoice shoppers download after buying. Leave a field empty and your
+        store's own details are used instead.
+      </p>
+
+      <FormGrid>
+        <Field
+          label="Registered business name"
+          wide
+          hint="Only if it differs from your store name"
+        >
+          <Input
+            value={draft.businessName}
+            placeholder={effective?.name}
+            onChange={(e) => set('businessName', e.target.value)}
+          />
+        </Field>
+
+        <Field
+          label="GSTIN"
+          hint="15 characters, e.g. 27AAPFU0939F1ZV. Leave empty if you are not registered."
+        >
+          <Input
+            value={draft.gstin}
+            spellCheck={false}
+            maxLength={15}
+            className="font-mono uppercase"
+            // Upper-cased as it is typed: a GSTIN is defined in upper case and
+            // the server stores it that way, so showing it lower here would be
+            // a value that silently changes on save.
+            onChange={(e) => set('gstin', e.target.value.toUpperCase())}
+          />
+        </Field>
+
+        <Field label="PAN" hint="10 characters. Optional.">
+          <Input
+            value={draft.pan}
+            spellCheck={false}
+            maxLength={10}
+            className="font-mono uppercase"
+            onChange={(e) => set('pan', e.target.value.toUpperCase())}
+          />
+        </Field>
+
+        <Field label="Address" wide>
+          <Input
+            value={draft.addressLine1}
+            placeholder="Registered address, line 1"
+            onChange={(e) => set('addressLine1', e.target.value)}
+          />
+        </Field>
+
+        <Field label="Address line 2" wide>
+          <Input
+            value={draft.addressLine2}
+            onChange={(e) => set('addressLine2', e.target.value)}
+          />
+        </Field>
+
+        <Field label="City">
+          <Input value={draft.city} onChange={(e) => set('city', e.target.value)} />
+        </Field>
+
+        <Field
+          label="State"
+          hint="Decides whether an order is taxed as CGST + SGST or as IGST"
+        >
+          <Input value={draft.state} onChange={(e) => set('state', e.target.value)} />
+        </Field>
+
+        <Field label="Postcode">
+          <Input
+            value={draft.postalCode}
+            onChange={(e) => set('postalCode', e.target.value)}
+          />
+        </Field>
+
+        <Field label="Invoice number prefix" hint={`Invoices read ${draft.prefix}ORD-1042`}>
+          <Input
+            value={draft.prefix}
+            maxLength={12}
+            className="font-mono"
+            onChange={(e) => set('prefix', e.target.value)}
+          />
+        </Field>
+
+        <Field label="Billing email">
+          <Input
+            value={draft.email}
+            placeholder={effective?.email ?? ''}
+            onChange={(e) => set('email', e.target.value)}
+          />
+        </Field>
+
+        <Field label="Billing phone">
+          <Input
+            value={draft.phone}
+            placeholder={effective?.phone ?? ''}
+            onChange={(e) => set('phone', e.target.value)}
+          />
+        </Field>
+
+        <Field
+          label="Notes"
+          wide
+          hint="Terms, bank details, a thank-you — printed at the foot of every invoice"
+        >
+          <Textarea
+            rows={3}
+            maxLength={1000}
+            value={draft.notes}
+            onChange={(e) => set('notes', e.target.value)}
+          />
+        </Field>
+      </FormGrid>
+
+      {/* What an invoice prints today, fallbacks applied. Without this a shop
+          that has filled in nothing sees an empty form and reasonably concludes
+          its invoices are broken. */}
+      {effective && (
+        <div className="mt-5 rounded-card border border-ink-100 bg-ink-50/60 p-4">
+          <p className="text-xs uppercase tracking-wide text-ink-500">
+            Your invoices currently say
+          </p>
+          <p className="mt-2 text-sm font-medium text-ink-950">{effective.name}</p>
+          {effective.lines.map((line) => (
+            <p key={line} className="text-sm text-ink-700">{line}</p>
+          ))}
+          {effective.gstin ? (
+            <p className="mt-1 font-mono text-xs text-ink-950">GSTIN {effective.gstin}</p>
+          ) : (
+            <p className="mt-1 text-xs text-ink-500">
+              No GSTIN — tax is printed as a single line rather than split into CGST and SGST.
+            </p>
+          )}
+        </div>
+      )}
+
+      <FormError error={save.error} />
+
+      <div className="mt-5">
+        <PrimaryButton disabled={save.isPending} onClick={() => save.mutate(draft)}>
+          {save.isPending ? 'Saving…' : 'Save invoicing details'}
+        </PrimaryButton>
+      </div>
+    </Card>
   );
 }
 

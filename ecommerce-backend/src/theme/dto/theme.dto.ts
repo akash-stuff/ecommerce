@@ -106,6 +106,14 @@ export class UpdateStorefrontDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(500) description?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) metaTitle?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(300) metaDescription?: string;
+
+  /**
+   * Shown under every product's own description. Plain text and capped: it is
+   * rendered as words on a page a shopper reads, not as markup.
+   */
+  @ApiPropertyOptional({ description: 'Shown below every product description' })
+  @IsOptional() @IsString() @MaxLength(2000) productDescription?: string;
+
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isPublished?: boolean;
 }
 

@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { apiClient, unwrap } from '@/services/api-client';
 import { bannerAdminService } from '@/services/admin.service';
 import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { StatusBadge } from '@/components/admin/DataTable';
@@ -30,6 +31,11 @@ interface Draft {
   isActive: boolean;
   startsAt: string;
   endsAt: string;
+  /** Empty means "use the store's brand colour, white text and body font". */
+  backgroundColor: string;
+  textColor: string;
+  fontFamily: string;
+  fontSize: string;
 }
 
 const blank: Draft = {
@@ -42,6 +48,20 @@ const blank: Draft = {
   isActive: true,
   startsAt: '',
   endsAt: '',
+  backgroundColor: '',
+  textColor: '',
+  fontFamily: '',
+  fontSize: '',
+};
+
+/** The three sizes, named as a shopkeeper would say them. */
+const SIZE_LABELS: Record<string, string> = { sm: 'Small', md: 'Medium', lg: 'Large' };
+
+/** What the preview strip renders each size as. Mirrors StorefrontLayout. */
+const PREVIEW_TEXT: Record<string, string> = {
+  sm: 'text-[11px]',
+  md: 'text-xs',
+  lg: 'text-sm',
 };
 
 /** `datetime-local` wants `YYYY-MM-DDTHH:mm` in local time, not an ISO string. */
@@ -64,6 +84,19 @@ export default function Banners() {
     queryFn: () => bannerAdminService.list(),
   });
 
+  /**
+   * The same list the Appearance editor offers, from the same endpoint, so the
+   * strip cannot be set in a font the server will refuse — the storefront asks
+   * Google Fonts for these by name and an arbitrary string becomes a request
+   * URL.
+   */
+  const options = useQuery({
+    queryKey: ['theme-options'],
+    queryFn: () =>
+      unwrap<{ fonts: string[] }>(apiClient.get('/theme/options')),
+    staleTime: 5 * 60_000,
+  });
+
   const refresh = () => queryClient.invalidateQueries({ queryKey: ['admin-banners'] });
 
   const save = useMutation({
@@ -81,6 +114,17 @@ export default function Banners() {
         isActive: d.isActive,
         startsAt: toIso(d.startsAt),
         endsAt: toIso(d.endsAt),
+        /**
+         * Sent raw, including as an empty string.
+         *
+         * The API reads an absent field as "not editing this" and an empty one
+         * as "clear it", so `|| undefined` would make going back to the brand
+         * colour impossible — the save would succeed and change nothing.
+         */
+        backgroundColor: d.backgroundColor,
+        textColor: d.textColor,
+        fontFamily: d.fontFamily,
+        fontSize: d.fontSize,
       };
       return d.id
         ? bannerAdminService.update(d.id, payload)
@@ -113,6 +157,10 @@ export default function Banners() {
       isActive: b.isActive,
       startsAt: toLocalInput(b.startsAt),
       endsAt: toLocalInput(b.endsAt),
+      backgroundColor: b.backgroundColor ?? '',
+      textColor: b.textColor ?? '',
+      fontFamily: b.fontFamily ?? '',
+      fontSize: b.fontSize ?? '',
     });
 
   const groups = (Object.keys(PLACEMENT_LABELS) as BannerPlacement[]).map((placement) => ({
@@ -309,6 +357,86 @@ export default function Banners() {
             </Field>
           </FormGrid>
 
+          {/* Styling belongs to the strip only: a hero is its image, and giving
+              it a background colour would suggest a control that draws nothing. */}
+          {draft.placement === 'SITE_ANNOUNCEMENT' && (
+            <div className="mt-6 border-t border-ink-100 pt-5">
+              <p className="text-sm font-medium text-ink-950">Colour and type</p>
+              <p className="mt-0.5 text-xs text-ink-500">
+                Optional. Leave these alone and the strip uses your brand colour, white text
+                and your store's body font.
+              </p>
+
+              <div className="mt-4 grid gap-4 sm:grid-cols-2">
+                <ColourField
+                  label="Background"
+                  fallbackLabel="Brand colour"
+                  value={draft.backgroundColor}
+                  onChange={(backgroundColor) => setDraft({ ...draft, backgroundColor })}
+                />
+                <ColourField
+                  label="Text"
+                  fallbackLabel="White"
+                  value={draft.textColor}
+                  onChange={(textColor) => setDraft({ ...draft, textColor })}
+                />
+
+                <Field label="Font">
+                  <Select
+                    value={draft.fontFamily}
+                    onChange={(e) => setDraft({ ...draft, fontFamily: e.target.value })}
+                  >
+                    <option value="">Your body font</option>
+                    {(options.data?.fonts ?? []).map((font) => (
+                      <option key={font} value={font}>{font}</option>
+                    ))}
+                  </Select>
+                </Field>
+
+                <Field label="Size">
+                  <Select
+                    value={draft.fontSize}
+                    onChange={(e) => setDraft({ ...draft, fontSize: e.target.value })}
+                  >
+                    <option value="">Medium</option>
+                    {Object.entries(SIZE_LABELS).map(([value, label]) => (
+                      <option key={value} value={value}>{label}</option>
+                    ))}
+                  </Select>
+                </Field>
+              </div>
+
+              {/* Drawn with the values being edited rather than described, so a
+                  pale colour on white is visibly a mistake before it is saved
+                  onto every page of the storefront. */}
+              <div className="mt-4">
+                <p className="text-xs uppercase tracking-wide text-ink-500">On your storefront</p>
+                <div
+                  className={`mt-2 rounded-card px-4 py-2.5 text-center tracking-wide ${
+                    PREVIEW_TEXT[draft.fontSize] ?? PREVIEW_TEXT.md
+                  }`}
+                  style={{
+                    backgroundColor: draft.backgroundColor || '#166534',
+                    color: draft.textColor || '#ffffff',
+                    ...(draft.fontFamily
+                      ? { fontFamily: `'${draft.fontFamily}', sans-serif` }
+                      : {}),
+                  }}
+                >
+                  <span className="font-medium">
+                    {draft.title || 'Your announcement goes here'}
+                  </span>
+                  {draft.subtitle && <span className="ml-2 opacity-75">{draft.subtitle}</span>}
+                </div>
+                {!draft.backgroundColor && (
+                  <p className="mt-1.5 text-xs text-ink-500">
+                    Shown in the default green — your storefront uses your own brand colour.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* A hero renders full-bleed, so the thumbnail in the picker is not
               enough to judge the crop. */}
           {draft.imageUrl && draft.placement === 'HOME_HERO' && (
@@ -326,6 +454,55 @@ export default function Banners() {
         </Modal>
       )}
     </Page>
+  );
+}
+
+/**
+ * A colour with an explicit way back to "not set".
+ *
+ * A bare `<input type="color">` has no empty state — it always reports some
+ * colour — so once a shopkeeper touched it there would be no way to return the
+ * strip to the store's brand colour short of guessing the hex. Clear does that.
+ */
+function ColourField({
+  label,
+  fallbackLabel,
+  value,
+  onChange,
+}: {
+  label: string;
+  fallbackLabel: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <Field label={label} hint={value ? undefined : `Using ${fallbackLabel.toLowerCase()}`}>
+      <div className="mt-1.5 flex items-center gap-2">
+        <input
+          type="color"
+          value={value || '#166534'}
+          onChange={(e) => onChange(e.target.value)}
+          aria-label={`${label} colour`}
+          className="h-9 w-10 shrink-0 cursor-pointer rounded border border-ink-200 bg-white p-1"
+        />
+        <input
+          value={value}
+          spellCheck={false}
+          placeholder={fallbackLabel}
+          onChange={(e) => onChange(e.target.value)}
+          className="w-full rounded-card border border-ink-200 px-3 py-2 font-mono text-sm uppercase transition-colors focus:border-ink-950 focus:outline-none focus:ring-1 focus:ring-ink-950"
+        />
+        {value && (
+          <button
+            type="button"
+            onClick={() => onChange('')}
+            className="shrink-0 text-xs text-ink-500 underline hover:text-ink-900"
+          >
+            Clear
+          </button>
+        )}
+      </div>
+    </Field>
   );
 }
 

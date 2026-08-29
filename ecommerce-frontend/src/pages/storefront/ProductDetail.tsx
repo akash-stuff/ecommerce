@@ -165,6 +165,35 @@ export default function ProductDetail() {
         }}
       />
 
+      {/* The long copy, below the buy box rather than beside it.
+          It was being collected in the admin form and shown nowhere, so a
+          shopkeeper who wrote three paragraphs about a product had no way to
+          find out that shoppers never saw them. */}
+      {(product.description || store.productDescription) && (
+        <section className="mt-16 border-t border-ink-100 pt-10">
+          <h2 className="font-display text-lg tracking-tight text-ink-950">Description</h2>
+
+          {product.description && (
+            /* `whitespace-pre-line`: the admin field is a plain textarea, so
+               the paragraph breaks someone typed are the only structure there
+               is, and collapsing them turns a description into one long block. */
+            <div className="mt-4 max-w-3xl whitespace-pre-line text-sm leading-relaxed text-ink-700">
+              {product.description}
+            </div>
+          )}
+
+          {store.productDescription && (
+            /* The store's own note, under whatever this product says. Set once
+               in Settings and shown on every product — delivery, returns, care
+               — so it is visually separated rather than reading as part of the
+               product's own copy. */
+            <div className="mt-6 max-w-3xl rounded-card border border-ink-100 bg-ink-50/60 p-5 text-sm leading-relaxed text-ink-700">
+              <p className="whitespace-pre-line">{store.productDescription}</p>
+            </div>
+          )}
+        </section>
+      )}
+
       <ProductReviews productId={product.id} />
     </div>
   );

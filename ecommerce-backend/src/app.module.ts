@@ -36,6 +36,7 @@ import { BannersModule } from './banners/banners.module';
 import { NewsletterModule } from './newsletter/newsletter.module';
 import { StaffModule } from './staff/staff.module';
 import { MediaModule } from './media/media.module';
+import { InvoicesModule } from './invoices/invoices.module';
 import { HealthModule } from './health/health.module';
 
 import { RequestContextMiddleware } from './common/middleware/request-context.middleware';
@@ -75,6 +76,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     NewsletterModule,
     StaffModule,
     MediaModule,
+    InvoicesModule,
     TenantsModule,
     AuthModule,
     ProductsModule,

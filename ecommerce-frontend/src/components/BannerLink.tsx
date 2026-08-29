@@ -16,24 +16,39 @@ import { Link } from 'react-router-dom';
 export function BannerLink({
   href,
   className,
+  style,
   children,
 }: {
   href: string | null;
   className?: string;
+  /** The announcement strip's own colours and font, when it has been styled. */
+  style?: React.CSSProperties;
   children: React.ReactNode;
 }) {
-  if (!href) return <div className={className}>{children}</div>;
+  if (!href) {
+    return (
+      <div className={className} style={style}>
+        {children}
+      </div>
+    );
+  }
 
   if (href.startsWith('/')) {
     return (
-      <Link to={href} className={className}>
+      <Link to={href} className={className} style={style}>
         {children}
       </Link>
     );
   }
 
   return (
-    <a href={href} target="_blank" rel="noopener noreferrer" className={className}>
+    <a
+      href={href}
+      target="_blank"
+      rel="noopener noreferrer"
+      className={className}
+      style={style}
+    >
       {children}
     </a>
   );

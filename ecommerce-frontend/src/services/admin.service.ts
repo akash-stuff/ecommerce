@@ -179,7 +179,7 @@ export interface UploadedMedia {
 }
 
 /** What a store's own upload is filed under. */
-export type TenantUploadPurpose = 'product' | 'theme' | 'banner' | 'category';
+export type TenantUploadPurpose = 'product' | 'theme' | 'banner' | 'category' | 'page';
 
 /**
  * Platform-level uploads, which belong to no store. The API serves these on a
@@ -323,4 +323,58 @@ export const staffService = {
     unwrap<{ temporaryPassword: string }>(apiClient.post(`/staff/${id}/reset-password`)),
 
   remove: (id: string) => apiClient.delete(`/staff/${id}`),
+};
+
+/** What an invoice prints as the seller, and what it falls back to. */
+export interface InvoiceSettings {
+  businessName: string | null;
+  gstin: string | null;
+  pan: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
+  email: string | null;
+  phone: string | null;
+  prefix: string;
+  notes: string | null;
+  /**
+   * What an invoice would actually print right now, fallbacks applied. The form
+   * shows this so a store that has filled in nothing can see that its invoices
+   * already work rather than assuming they do not.
+   */
+  effective: {
+    name: string;
+    lines: string[];
+    gstin: string | null;
+    pan: string | null;
+    email: string | null;
+    phone: string | null;
+    state: string | null;
+  };
+}
+
+export const invoiceService = {
+  settings: () => unwrap<InvoiceSettings>(apiClient.get('/invoices/settings')),
+
+  saveSettings: (payload: Record<string, string>) =>
+    unwrap<InvoiceSettings>(apiClient.put('/invoices/settings', payload)),
+
+  /**
+   * The PDF for one order, from the admin console.
+   *
+   * Fetched as a blob and saved from memory rather than linked to directly:
+   * the route needs the bearer token, and a plain <a href> carries no
+   * Authorization header — the same reason the subscriber export works this way.
+   */
+  download: async (orderId: string) => {
+    const response = await apiClient.get(`/invoices/orders/${orderId}`, {
+      responseType: 'blob',
+    });
+    return {
+      blob: response.data as Blob,
+      disposition: response.headers['content-disposition'] as string | undefined,
+    };
+  },
 };

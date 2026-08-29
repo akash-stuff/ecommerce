@@ -9,6 +9,7 @@ import { useCustomerStore } from '@/store/customer.store';
 import { categoryService } from '@/services/admin.service';
 import { bannerService } from '@/services/store.service';
 import { BannerLink } from '@/components/BannerLink';
+import { SocialIcon, socialLabel } from '@/components/SocialIcon';
 import { Toaster } from '@/components/Toasts';
 import { apiClient, unwrap } from '@/services/api-client';
 
@@ -71,6 +72,40 @@ export function StorefrontLayout() {
   });
 
   const announcement = announcements.data?.[0];
+
+  /**
+   * A strip in a font the theme does not use still has to arrive.
+   *
+   * ThemeProvider requests only the two families the theme names, so an
+   * announcement set in Playfair on a store whose body font is Inter would fall
+   * back to the system stack and look like the setting had not saved. This asks
+   * for that one extra family, and only when it is genuinely a third one.
+   */
+  const announcementFont = announcement?.fontFamily ?? null;
+  useEffect(() => {
+    const id = 'announcement-font';
+    document.getElementById(id)?.remove();
+
+    if (
+      !announcementFont ||
+      announcementFont === store.theme.bodyFont ||
+      announcementFont === store.theme.headingFont
+    ) {
+      return;
+    }
+
+    const link = document.createElement('link');
+    link.id = id;
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?family=${announcementFont.replace(
+      / /g,
+      '+',
+    )}:wght@400;500;600&display=swap`;
+    document.head.appendChild(link);
+
+    return () => link.remove();
+  }, [announcementFont, store.theme.bodyFont, store.theme.headingFont]);
+
   const navCategories = (categories.data ?? []).slice(0, 5);
   const social = Object.entries(store.theme.socialLinks ?? {});
 
@@ -88,13 +123,33 @@ export function StorefrontLayout() {
       {announcement && (
         // Above the sticky header, so it scrolls away instead of permanently
         // eating vertical space on a phone.
+        //
+        // Colour and type come from the banner when the shopkeeper set them and
+        // fall back to the brand colour otherwise, so a store that never opens
+        // the styling controls gets exactly what it had before.
         <BannerLink
           href={announcement.linkUrl}
-          className="block bg-brand px-4 py-2.5 text-center text-xs tracking-wide text-white sm:text-[13px]"
+          className={`block px-4 py-2.5 text-center tracking-wide ${
+            announcement.backgroundColor ? '' : 'bg-brand'
+          } ${announcement.textColor ? '' : 'text-white'} ${
+            ANNOUNCEMENT_TEXT[announcement.fontSize ?? 'md'] ?? ANNOUNCEMENT_TEXT.md
+          }`}
+          style={{
+            ...(announcement.backgroundColor
+              ? { backgroundColor: announcement.backgroundColor }
+              : {}),
+            ...(announcement.textColor ? { color: announcement.textColor } : {}),
+            ...(announcement.fontFamily
+              ? { fontFamily: `'${announcement.fontFamily}', sans-serif` }
+              : {}),
+          }}
         >
           <span className="font-medium">{announcement.title}</span>
           {announcement.subtitle && (
-            <span className="ml-2 text-white/70">{announcement.subtitle}</span>
+            // Opacity rather than a second colour: it has to sit legibly on
+            // whatever background was chosen, and a fixed grey would vanish on
+            // a dark strip and shout on a pale one.
+            <span className="ml-2 opacity-75">{announcement.subtitle}</span>
           )}
         </BannerLink>
       )}
@@ -255,6 +310,10 @@ export function StorefrontLayout() {
                 </p>
               )}
               {social.length > 0 && (
+                /* Marks, not words. A row of round buttons reads as "follow us"
+                   at a glance in any language, which a list of the words
+                   "instagram facebook" does not — and the name is still there
+                   for a screen reader and on hover. */
                 <div className="mt-6 flex flex-wrap gap-2">
                   {social.map(([platform, url]) => (
                     <a
@@ -262,9 +321,11 @@ export function StorefrontLayout() {
                       href={url}
                       target="_blank"
                       rel="noreferrer noopener"
-                      className="surface-line rounded-full border px-3.5 py-1.5 text-xs capitalize text-ink-700 transition-colors hover:border-brand hover:text-brand"
+                      title={socialLabel(platform)}
+                      aria-label={socialLabel(platform)}
+                      className="surface-line flex h-9 w-9 items-center justify-center rounded-full border text-ink-700 transition-colors hover:border-brand hover:text-brand"
                     >
-                      {platform}
+                      <SocialIcon platform={platform} size={16} />
                     </a>
                   ))}
                 </div>
@@ -305,6 +366,13 @@ export function StorefrontLayout() {
     </div>
   );
 }
+
+/** The three announcement text sizes, as the classes that draw them. */
+const ANNOUNCEMENT_TEXT: Record<string, string> = {
+  sm: 'text-[11px] sm:text-xs',
+  md: 'text-xs sm:text-[13px]',
+  lg: 'text-sm sm:text-base',
+};
 
 /**
  * A nav link with an underline that grows from the left on hover.

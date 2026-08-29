@@ -9,8 +9,11 @@ import {
   IsString,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import { IsUrlOrEmpty } from '../../common/decorators/is-url-or-empty';
+import { IsHexColourOrEmpty } from '../../common/decorators/is-hex-colour-or-empty';
+import { ALLOWED_FONTS } from '../../theme/dto/theme.dto';
 
 /**
  * Where a banner appears. Closed, and short on purpose: every value here is a
@@ -21,7 +24,45 @@ import { IsUrlOrEmpty } from '../../common/decorators/is-url-or-empty';
 export const BANNER_PLACEMENTS = ['HOME_HERO', 'SITE_ANNOUNCEMENT'] as const;
 export type BannerPlacement = (typeof BANNER_PLACEMENTS)[number];
 
-export class CreateBannerDto {
+/**
+ * How large the announcement strip's text is. Three named steps rather than a
+ * number: a free pixel value lets a shopkeeper set 48px on a strip that sits
+ * above every page on the site, and there is no way back from that except
+ * finding this form again.
+ */
+export const ANNOUNCEMENT_FONT_SIZES = ['sm', 'md', 'lg'] as const;
+export type AnnouncementFontSize = (typeof ANNOUNCEMENT_FONT_SIZES)[number];
+
+/**
+ * The styling a banner may carry, mixed into both the create and the update
+ * DTO. Every field is optional and clearable: cleared means "use the store's
+ * brand colour and body font", which is what a strip looked like before these
+ * controls existed.
+ */
+export class BannerStyleDto {
+  @ApiPropertyOptional({ description: 'Strip background. Empty to use the brand colour.' })
+  @IsHexColourOrEmpty() backgroundColor?: string;
+
+  @ApiPropertyOptional({ description: 'Text colour. Empty for white.' })
+  @IsHexColourOrEmpty() textColor?: string;
+
+  @ApiPropertyOptional({
+    enum: ALLOWED_FONTS,
+    description: "A font from the theme allowlist. Empty for the store's body font.",
+  })
+  @IsOptional()
+  @ValidateIf((_o, value) => value !== '')
+  @IsIn(ALLOWED_FONTS as unknown as string[])
+  fontFamily?: string;
+
+  @ApiPropertyOptional({ enum: ANNOUNCEMENT_FONT_SIZES })
+  @IsOptional()
+  @ValidateIf((_o, value) => value !== '')
+  @IsIn(ANNOUNCEMENT_FONT_SIZES as unknown as string[])
+  fontSize?: string;
+}
+
+export class CreateBannerDto extends BannerStyleDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) title?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) subtitle?: string;
 
@@ -47,7 +88,7 @@ export class CreateBannerDto {
   @IsOptional() @IsISO8601() endsAt?: string;
 }
 
-export class UpdateBannerDto {
+export class UpdateBannerDto extends BannerStyleDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(120) title?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) subtitle?: string;
   @ApiPropertyOptional() @IsUrlOrEmpty() imageUrl?: string;

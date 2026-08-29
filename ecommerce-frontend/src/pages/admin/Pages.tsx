@@ -1,7 +1,17 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ExternalLink, FileText, Loader2, Trash2 } from 'lucide-react';
+import {
+  ExternalLink,
+  FileText,
+  ImagePlus,
+  Loader2,
+  Trash2,
+  Upload,
+  X,
+} from 'lucide-react';
 import { apiClient, unwrap } from '@/services/api-client';
+import { mediaService } from '@/services/admin.service';
+import { ImageUpload } from '@/components/admin/ImageUpload';
 import {
   DangerButton,
   EmptyState,
@@ -11,7 +21,7 @@ import {
 } from '@/components/admin/Page';
 import { DataTable, StatusBadge, type Column } from '@/components/admin/DataTable';
 import { Field, FormError, FormGrid, Input, Modal, Select, Textarea } from '@/components/admin/Modal';
-import type { PaginationMeta } from '@/types/api';
+import type { ApiError, PaginationMeta } from '@/types/api';
 import { toast, toastFromError } from '@/components/Toasts';
 
 interface PageRow {
@@ -22,11 +32,20 @@ interface PageRow {
   updatedAt: string;
 }
 
+/** One image in a page's gallery, as the API stores it. */
+interface PageImage {
+  url: string;
+  caption?: string;
+}
+
 interface Draft {
   id?: string;
   title: string;
   slug: string;
   content: string;
+  /** Artwork behind the page heading. Empty means the usual store surface. */
+  backgroundImageUrl: string;
+  images: PageImage[];
   metaTitle: string;
   metaDescription: string;
   isPublished: boolean;
@@ -36,10 +55,15 @@ const blank: Draft = {
   title: '',
   slug: '',
   content: '',
+  backgroundImageUrl: '',
+  images: [],
   metaTitle: '',
   metaDescription: '',
   isPublished: false,
 };
+
+/** The server refuses more than this; the form stops asking for them first. */
+const MAX_PAGE_IMAGES = 12;
 
 /** Mirrors the server's own slugifier, so the previewed address is the real one. */
 function slugify(value: string): string {
@@ -81,6 +105,14 @@ export default function Pages() {
         title: d.title,
         slug: d.slug || undefined,
         content: d.content,
+        /**
+         * Both sent raw, empty included. The API reads an absent field as "not
+         * editing this", so `|| undefined` would make removing a background
+         * image or emptying the gallery save without complaint and change
+         * nothing.
+         */
+        backgroundImageUrl: d.backgroundImageUrl,
+        images: d.images,
         metaTitle: d.metaTitle || undefined,
         metaDescription: d.metaDescription || undefined,
         isPublished: d.isPublished,
@@ -128,6 +160,8 @@ export default function Pages() {
         title: full.title,
         slug: full.slug,
         content: full.content ?? '',
+        backgroundImageUrl: full.backgroundImageUrl ?? '',
+        images: Array.isArray(full.images) ? full.images : [],
         metaTitle: full.metaTitle ?? '',
         metaDescription: full.metaDescription ?? '',
         isPublished: full.isPublished,
@@ -313,6 +347,39 @@ export default function Pages() {
                 style={{ fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace' }}
               />
             </Field>
+
+            {/* Pictures, without having to write an <img> tag by hand. Typing
+                markup is the whole reason a page used to be text and nothing
+                else, and most shopkeepers will not do it. */}
+            <Field
+              label="Header image"
+              wide
+              hint="Optional. Sits behind the page title. Leave it empty and the title sits on your usual page background."
+            >
+              <div className="mt-1.5">
+                <ImageUpload
+                  label="header image"
+                  purpose="page"
+                  aspect="wide"
+                  value={draft.backgroundImageUrl}
+                  onChange={(backgroundImageUrl) =>
+                    setDraft({ ...draft, backgroundImageUrl })
+                  }
+                />
+              </div>
+            </Field>
+
+            <Field
+              label="Images"
+              wide
+              hint={`Optional. Shown as a gallery under the content. Up to ${MAX_PAGE_IMAGES}.`}
+            >
+              <PageGallery
+                value={draft.images}
+                onChange={(images) => setDraft({ ...draft, images })}
+              />
+            </Field>
+
           </FormGrid>
 
           {/* SEO is a secondary concern on this form, so it is folded away
@@ -388,5 +455,191 @@ export default function Pages() {
         </Modal>
       )}
     </Page>
+  );
+}
+
+/**
+ * A page's gallery: upload, caption, reorder, remove.
+ *
+ * Its own component rather than the product one, because the two differ in what
+ * the list *means*. A product's first image is its thumbnail everywhere on the
+ * storefront, so that widget is built around which image is first; a page's
+ * images are a row under the text, where order is presentation and a caption is
+ * often the point of including the picture at all.
+ */
+function PageGallery({
+  value,
+  onChange,
+}: {
+  value: PageImage[];
+  onChange: (images: PageImage[]) => void;
+}) {
+  const input = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState<{ done: number; total: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const room = MAX_PAGE_IMAGES - value.length;
+
+  const pick = async (files: FileList | null) => {
+    if (!files?.length) return;
+    setError(null);
+
+    // Anything past the limit is refused here with a reason, rather than
+    // uploaded and then rejected by the server after the wait.
+    const chosen = Array.from(files).slice(0, Math.max(room, 0));
+    if (chosen.length < files.length) {
+      setError(`A page holds ${MAX_PAGE_IMAGES} images; the extra ones were not added.`);
+    }
+    if (chosen.length === 0) return;
+
+    setUploading({ done: 0, total: chosen.length });
+    const added: PageImage[] = [];
+
+    // Sequential, like the product gallery: someone adding six photos from a
+    // phone should not open six concurrent uploads on a slow connection.
+    try {
+      for (const file of chosen) {
+        const stored = await mediaService.upload(file, 'page');
+        added.push({ url: stored.url });
+        setUploading({ done: added.length, total: chosen.length });
+      }
+    } catch (e) {
+      setError((e as ApiError).message ?? 'That file could not be uploaded.');
+    } finally {
+      // Whatever succeeded before a failure is kept — re-uploading images that
+      // already worked is a poor way to recover from one bad file.
+      if (added.length) onChange([...value, ...added]);
+      setUploading(null);
+      if (input.current) input.current.value = '';
+    }
+  };
+
+  const move = (index: number, delta: number) => {
+    const next = [...value];
+    const target = index + delta;
+    if (target < 0 || target >= next.length) return;
+    [next[index], next[target]] = [next[target], next[index]];
+    onChange(next);
+  };
+
+  return (
+    <div className="mt-1.5">
+      <input
+        ref={input}
+        type="file"
+        multiple
+        accept="image/png,image/jpeg,image/gif,image/webp"
+        className="sr-only"
+        onChange={(e) => void pick(e.target.files)}
+      />
+
+      {value.length > 0 && (
+        <ul className="mb-3 space-y-2">
+          {value.map((image, index) => (
+            <li
+              key={`${image.url}-${index}`}
+              className="flex items-center gap-3 rounded-card border border-ink-100 bg-white p-2"
+            >
+              <img
+                src={image.url}
+                alt=""
+                className="h-14 w-20 shrink-0 rounded object-cover"
+              />
+
+              <input
+                value={image.caption ?? ''}
+                maxLength={200}
+                placeholder="Caption — optional"
+                aria-label={`Caption for image ${index + 1}`}
+                onChange={(e) => {
+                  const next = [...value];
+                  next[index] = { ...image, caption: e.target.value };
+                  onChange(next);
+                }}
+                className="w-full rounded-card border border-ink-200 px-3 py-1.5 text-sm transition-colors focus:border-ink-950 focus:outline-none focus:ring-1 focus:ring-ink-950"
+              />
+
+              <span className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => move(index, -1)}
+                  disabled={index === 0}
+                  aria-label="Move image up"
+                  className="rounded border border-ink-200 px-1.5 text-ink-500 transition-colors hover:bg-ink-50 disabled:opacity-30"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  onClick={() => move(index, 1)}
+                  disabled={index === value.length - 1}
+                  aria-label="Move image down"
+                  className="rounded border border-ink-200 px-1.5 text-ink-500 transition-colors hover:bg-ink-50 disabled:opacity-30"
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onChange(value.filter((_, i) => i !== index))}
+                  aria-label="Remove image"
+                  className="ml-1 rounded p-1 text-ink-400 transition-colors hover:bg-red-50 hover:text-red-600"
+                >
+                  <X size={14} />
+                </button>
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {room > 0 && (
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setDragging(false);
+            void pick(e.dataTransfer.files);
+          }}
+          className={`flex flex-col items-center justify-center rounded-card border border-dashed px-4 py-6 text-center transition-colors ${
+            dragging ? 'border-ink-950 bg-ink-50' : 'border-ink-200 bg-white hover:border-ink-300'
+          }`}
+        >
+          {uploading ? (
+            <>
+              <Loader2 size={18} className="animate-spin text-ink-400" />
+              <p className="numeric mt-2 text-xs text-ink-500">
+                Uploading {uploading.done + 1} of {uploading.total}…
+              </p>
+            </>
+          ) : (
+            <>
+              <ImagePlus size={20} className="text-ink-300" />
+              <button
+                type="button"
+                onClick={() => input.current?.click()}
+                className="mt-2 inline-flex items-center gap-1.5 rounded-card border border-ink-200 bg-white px-3 py-1.5 text-sm font-medium text-ink-900 transition-colors hover:bg-ink-50"
+              >
+                <Upload size={13} />
+                {value.length > 0 ? 'Add more images' : 'Upload images'}
+              </button>
+              <p className="mt-1.5 text-[11px] text-ink-400">
+                or drop them here · {room} more can be added
+              </p>
+            </>
+          )}
+        </div>
+      )}
+
+      {error && (
+        <p role="alert" className="mt-2 text-xs text-red-600">
+          {error}
+        </p>
+      )}
+    </div>
   );
 }

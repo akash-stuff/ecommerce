@@ -301,6 +301,36 @@ model Store {
   metaDescription String?
   ogImage         String?
 
+  /// A block the shopkeeper writes once and every product page shows under the
+  /// product's own description — delivery, returns, care instructions. Plain
+  /// text: it is rendered as words, never as markup.
+  productDescription String?
+
+  // ---------------------------------------------------------------------------
+  // INVOICING
+  //
+  // Kept beside the store rather than in a table of their own: there is exactly
+  // one set of these per store, and an invoice is a view of an order plus these
+  // details. Each falls back to the store's own trading details when blank, so a
+  // shop that never opens the form still gets a usable invoice.
+  // ---------------------------------------------------------------------------
+  invoiceBusinessName String?
+  /// 15-character GSTIN. Printed only when present — a shop below the
+  /// registration threshold has none and must not show a blank field.
+  invoiceGstin        String?
+  invoicePan          String?
+  invoiceAddressLine1 String?
+  invoiceAddressLine2 String?
+  invoiceCity         String?
+  invoiceState        String?
+  invoicePostalCode   String?
+  invoiceEmail        String?
+  invoicePhone        String?
+  /// Prefixed to the order number to form the invoice number.
+  invoicePrefix       String  @default("INV-")
+  /// Terms, bank details, a thank-you — printed at the foot of every invoice.
+  invoiceNotes        String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -988,6 +1018,12 @@ model Page {
   title           String
   slug            String
   content         String
+  /// Artwork behind the page heading. Optional; without it the heading sits on
+  /// the store's usual surface.
+  backgroundImageUrl String?
+  /// Further images shown as a gallery under the content, as
+  /// `[{ url, caption? }]`. A page is rarely only words.
+  images          Json     @default("[]")
   isPublished     Boolean  @default(false)
   metaTitle       String?
   metaDescription String?
@@ -1043,6 +1079,18 @@ model Banner {
   position  Int       @default(0)
   placement String    @default("HOME_HERO")
   isActive  Boolean   @default(true)
+
+  /// How the announcement strip is drawn. All four are null by default, which
+  /// means "the store's brand colour, white text and the body font" — exactly
+  /// what every strip looked like before these existed, so nothing changes for
+  /// a shop that never opens the styling controls.
+  backgroundColor String?
+  textColor       String?
+  /// A name from the theme font allowlist, never arbitrary CSS: the storefront
+  /// requests fonts from Google Fonts by name.
+  fontFamily      String?
+  /// 'sm' | 'md' | 'lg'
+  fontSize        String?
   startsAt  DateTime?
   endsAt    DateTime?
 

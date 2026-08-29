@@ -8,6 +8,9 @@ interface CmsPageData {
   title: string;
   slug: string;
   content: string;
+  /** Artwork behind the heading. Null on a page that is only words. */
+  backgroundImageUrl: string | null;
+  images: { url: string; caption?: string }[];
   metaTitle: string | null;
   metaDescription: string | null;
   updatedAt: string;
@@ -73,13 +76,67 @@ export default function CmsPage() {
     );
   }
 
+  const images = data.images ?? [];
+
   return (
-    <article className="mx-auto max-w-3xl px-4 py-16 sm:px-6">
-      <h1 className="font-display text-3xl tracking-tight text-ink-950">{data.title}</h1>
-      <div
-        className="cms-content mt-8"
-        dangerouslySetInnerHTML={{ __html: data.content }}
-      />
+    <article className="pb-16">
+      {data.backgroundImageUrl ? (
+        /* The heading over its own artwork. A scrim rather than a flat overlay
+           colour, because the title has to stay legible over a photograph
+           whose brightness nobody here chose — and a store that uploads a pale
+           picture should not have to discover that by reading white on white. */
+        <header className="relative isolate overflow-hidden">
+          <img
+            src={data.backgroundImageUrl}
+            alt=""
+            className="absolute inset-0 -z-10 h-full w-full object-cover"
+          />
+          <div className="absolute inset-0 -z-10 bg-gradient-to-t from-ink-950/80 to-ink-950/40" />
+          <div className="mx-auto max-w-3xl px-4 py-20 sm:px-6 sm:py-28">
+            <h1 className="font-display text-3xl tracking-tight text-white sm:text-4xl">
+              {data.title}
+            </h1>
+          </div>
+        </header>
+      ) : (
+        <header className="mx-auto max-w-3xl px-4 pt-16 sm:px-6">
+          <h1 className="font-display text-3xl tracking-tight text-ink-950">{data.title}</h1>
+        </header>
+      )}
+
+      <div className="mx-auto max-w-3xl px-4 sm:px-6">
+        <div
+          className="cms-content mt-8"
+          dangerouslySetInnerHTML={{ __html: data.content }}
+        />
+
+        {images.length > 0 && (
+          /* One column for a single picture, two from `sm` up for a set — a
+             lone image stretched across a two-column grid reads as a mistake. */
+          <div
+            className={`mt-12 grid gap-4 ${images.length > 1 ? 'sm:grid-cols-2' : ''}`}
+          >
+            {images.map((image, index) => (
+              <figure key={`${image.url}-${index}`}>
+                <img
+                  src={image.url}
+                  // The caption is the picture's own description when there is
+                  // one; without it the image is decorative to a screen reader
+                  // rather than announced as an unlabelled graphic.
+                  alt={image.caption ?? ''}
+                  loading="lazy"
+                  className="w-full rounded-card border border-ink-100 object-cover"
+                />
+                {image.caption && (
+                  <figcaption className="surface-muted mt-2 text-xs leading-relaxed">
+                    {image.caption}
+                  </figcaption>
+                )}
+              </figure>
+            ))}
+          </div>
+        )}
+      </div>
     </article>
   );
 }

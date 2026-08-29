@@ -47,6 +47,10 @@ export class BannersService {
         linkUrl: true,
         placement: true,
         position: true,
+        backgroundColor: true,
+        textColor: true,
+        fontFamily: true,
+        fontSize: true,
       },
       orderBy: [{ position: 'asc' }, { id: 'asc' }],
     });
@@ -90,6 +94,12 @@ export class BannersService {
         placement,
         position: dto.position ?? 0,
         isActive: dto.isActive ?? true,
+        // Empty string and absent both mean "no override" on create — there is
+        // nothing stored yet to clear.
+        backgroundColor: dto.backgroundColor || null,
+        textColor: dto.textColor || null,
+        fontFamily: dto.fontFamily || null,
+        fontSize: dto.fontSize || null,
         ...window,
       } as unknown as Prisma.BannerCreateInput,
     });
@@ -123,6 +133,14 @@ export class BannersService {
     if (dto.placement !== undefined) data.placement = dto.placement;
     if (dto.position !== undefined) data.position = dto.position;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
+
+    // `|| null` rather than a truthiness gate: an empty string is how the form
+    // says "clear this and go back to the brand colour", and an absent field
+    // means "not editing it".
+    if (dto.backgroundColor !== undefined) data.backgroundColor = dto.backgroundColor || null;
+    if (dto.textColor !== undefined) data.textColor = dto.textColor || null;
+    if (dto.fontFamily !== undefined) data.fontFamily = dto.fontFamily || null;
+    if (dto.fontSize !== undefined) data.fontSize = dto.fontSize || null;
 
     if (dto.startsAt !== undefined || dto.endsAt !== undefined) {
       // Validated as a pair: changing one end must still leave a sane window,

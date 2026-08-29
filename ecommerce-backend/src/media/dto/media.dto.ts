@@ -2,7 +2,7 @@ import { ApiPropertyOptional } from '@nestjs/swagger';
 import { IsIn, IsOptional } from 'class-validator';
 import type { PlatformMediaPurpose, TenantMediaPurpose } from '../media.service';
 
-export const MEDIA_PURPOSES = ['product', 'theme', 'banner', 'category'] as const;
+export const MEDIA_PURPOSES = ['product', 'theme', 'banner', 'category', 'page'] as const;
 
 /**
  * Purposes reachable without a tenant. A platform asset belongs to the

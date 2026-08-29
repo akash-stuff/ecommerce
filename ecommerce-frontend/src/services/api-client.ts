@@ -102,6 +102,26 @@ export interface NormalizedError {
 
 /** Every caller gets the same shape, including on network failure. */
 function normalizeError(error: AxiosError<ApiError>): NormalizedError {
+  /**
+   * A failed file download.
+   *
+   * `responseType: 'blob'` applies to the error body too, so the API's JSON
+   * arrives here as a Blob and reading `.message` off it yields undefined —
+   * which used to surface as a bare "Something went wrong." on a download that
+   * failed for a knowable reason. The status is what is actually available
+   * without an async read, so it is what gets said.
+   */
+  if (error.response?.data instanceof Blob) {
+    return {
+      message:
+        error.response.status === 404
+          ? 'That file is not available.'
+          : 'That file could not be downloaded.',
+      code: 'DOWNLOAD_FAILED',
+      status: error.response.status,
+    };
+  }
+
   if (error.response?.data && typeof error.response.data === 'object') {
     const body = error.response.data;
     return {
