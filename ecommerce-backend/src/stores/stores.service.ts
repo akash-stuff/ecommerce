@@ -52,6 +52,7 @@ export class StoresService {
       phone: store.phone,
       metaTitle: store.metaTitle,
       metaDescription: store.metaDescription,
+      productDescription: store.productDescription,
       template: store.template ? { slug: store.template.slug, name: store.template.name } : null,
       theme: toThemeDto(store.theme),
     };

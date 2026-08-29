@@ -186,6 +186,10 @@ async function main(): Promise<void> {
     slug: 'northwind',
     businessName: 'Northwind Apparel',
     storeName: 'Northwind',
+    addressLine1: '14 Residency Road',
+    city: 'Bengaluru',
+    state: 'Karnataka',
+    postalCode: '560025',
     templateSlug: 'fashion',
     planId: growth.id,
     ownerEmail: 'owner@northwind.localhost',
@@ -202,6 +206,10 @@ async function main(): Promise<void> {
     slug: 'voltway',
     businessName: 'Voltway Electronics',
     storeName: 'Voltway',
+    addressLine1: '9 Linking Road',
+    city: 'Mumbai',
+    state: 'Maharashtra',
+    postalCode: '400050',
     templateSlug: 'electronics',
     planId: starter.id,
     ownerEmail: 'owner@voltway.localhost',
@@ -223,7 +231,8 @@ Seed complete.
   Demo customer shopper@example.com       / Shopper123!     (exists separately in each store)
   Demo coupon   WELCOME10                 10% off over 1000, capped at 700
   Payments      Cash on delivery enabled  connect a gateway in Admin > Payments
-  Demo banner   Announcement strip        text only; add a hero image from Admin > Banners
+  Demo banner   Announcement strip        text only; colour and font are set in Admin > Banners
+  Invoicing     Store address only        add a GSTIN in Admin > Settings to split tax as CGST/SGST
 `);
 }
 
@@ -231,6 +240,10 @@ interface TenantSpec {
   slug: string;
   businessName: string;
   storeName: string;
+  addressLine1: string;
+  city: string;
+  state: string;
+  postalCode: string;
   templateSlug: string;
   planId: string;
   ownerEmail: string;
@@ -269,6 +282,29 @@ async function seedTenant(spec: TenantSpec): Promise<void> {
         isPublished: true,
         metaTitle: spec.storeName,
         metaDescription: `Shop ${spec.businessName} online.`,
+
+        /**
+         * A trading address, because an invoice prints one.
+         *
+         * Seeded on the store rather than in the invoicing fields on purpose:
+         * that is the fallback path, so a fresh install downloads a complete
+         * invoice without anyone opening Settings, and filling the invoicing
+         * form in then visibly overrides it.
+         */
+        addressLine1: spec.addressLine1,
+        city: spec.city,
+        state: spec.state,
+        postalCode: spec.postalCode,
+
+        /**
+         * The note every product page shows under its own description. Seeded
+         * because the field is invisible until it has something in it, and a
+         * shopkeeper is unlikely to find a setting whose effect they have never
+         * seen.
+         */
+        productDescription:
+          'Delivered in 3-5 working days. Returns accepted within 7 days, unused and in ' +
+          'the original packaging. Questions? Reply to your order email.',
       },
     });
 
@@ -440,6 +476,17 @@ async function seedTenant(spec: TenantSpec): Promise<void> {
         subtitle: 'Use WELCOME10 for 10% off your first order',
         linkUrl: '/shop',
         position: 0,
+
+        /**
+         * Deliberately *not* styled.
+         *
+         * Null on all four means the strip takes the store's brand colour and
+         * body font, which is what makes the two seeded shops look different
+         * from each other here. Seeding a fixed hex would paint both the same
+         * and hide the very thing this demo data exists to show — and the
+         * controls in Admin > Banners are then a visible change rather than an
+         * adjustment to something already overridden.
+         */
       },
     });
   });

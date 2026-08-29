@@ -40,6 +40,15 @@ export class StoreConfigDto {
   @ApiProperty({ nullable: true }) phone!: string | null;
   @ApiProperty({ nullable: true }) metaTitle!: string | null;
   @ApiProperty({ nullable: true }) metaDescription!: string | null;
+
+  /**
+   * One block of the shopkeeper's own words that every product page shows under
+   * the product's own description — delivery, returns, care. Plain text, and it
+   * arrives here rather than on each product because it is the same sentence on
+   * all of them.
+   */
+  @ApiProperty({ nullable: true }) productDescription!: string | null;
+
   @ApiProperty({ type: StoreTemplateDto, nullable: true })
   template!: StoreTemplateDto | null;
   @ApiProperty({ type: StoreThemeDto }) theme!: StoreThemeDto;

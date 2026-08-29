@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { Download, Loader2 } from 'lucide-react';
 import { customerService } from '@/services/customer.service';
+import { filenameFromDisposition, saveBlob } from '@/utils/download';
 import { useCustomerStore } from '@/store/customer.store';
 import { useStore } from '@/features/theme/ThemeProvider';
 import { formatMoney } from '@/utils/format';
@@ -27,6 +29,18 @@ export default function Account() {
   const cancel = useMutation({
     mutationFn: (orderNumber: string) => customerService.cancelMyOrder(orderNumber),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['my-orders'] }),
+  });
+
+  /**
+   * A mutation rather than a bare async click handler, so the button can show
+   * that it is working and a failure has somewhere to be reported. Rendering
+   * the PDF is a server round trip; on a slow connection a silent button reads
+   * as a broken one.
+   */
+  const invoice = useMutation({
+    mutationFn: (orderNumber: string) => customerService.downloadInvoice(orderNumber),
+    onSuccess: ({ blob, disposition }, orderNumber) =>
+      saveBlob(blob, filenameFromDisposition(disposition, `invoice-${orderNumber}.pdf`)),
   });
 
   if (status === 'idle' || status === 'loading') {
@@ -80,6 +94,8 @@ export default function Account() {
               canCancel={CANCELLABLE.includes(order.status)}
               cancelling={cancel.isPending && cancel.variables === order.orderNumber}
               onCancel={() => cancel.mutate(order.orderNumber)}
+              downloading={invoice.isPending && invoice.variables === order.orderNumber}
+              onDownloadInvoice={() => invoice.mutate(order.orderNumber)}
             />
           ))}
         </ul>
@@ -87,6 +103,13 @@ export default function Account() {
         {cancel.isError && (
           <p className="mt-3 text-sm text-red-600">
             {(cancel.error as { message?: string }).message}
+          </p>
+        )}
+
+        {invoice.isError && (
+          <p className="mt-3 text-sm text-red-600">
+            {(invoice.error as { message?: string }).message ??
+              'That invoice could not be downloaded.'}
           </p>
         )}
 
@@ -119,12 +142,16 @@ function OrderCard({
   canCancel,
   cancelling,
   onCancel,
+  downloading,
+  onDownloadInvoice,
 }: {
   order: Order;
   currency: string;
   canCancel: boolean;
   cancelling: boolean;
   onCancel: () => void;
+  downloading: boolean;
+  onDownloadInvoice: () => void;
 }) {
   return (
     <li className="rounded-card border border-ink-100 p-5">
@@ -158,15 +185,33 @@ function OrderCard({
         ))}
       </ul>
 
-      {canCancel && (
+      <div className="mt-4 flex flex-wrap items-center gap-4">
+        {/* Offered on every placed order, not only paid ones. An unpaid order
+            still needs a document to send with the payment, and the PDF says
+            plainly which of the two it is. */}
         <button
-          onClick={onCancel}
-          disabled={cancelling}
-          className="mt-4 text-xs text-red-600 underline disabled:opacity-40"
+          onClick={onDownloadInvoice}
+          disabled={downloading}
+          className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-900 underline disabled:opacity-40"
         >
-          {cancelling ? 'Cancelling…' : 'Cancel this order'}
+          {downloading ? (
+            <Loader2 size={12} className="animate-spin" />
+          ) : (
+            <Download size={12} />
+          )}
+          {downloading ? 'Preparing…' : 'Download invoice'}
         </button>
-      )}
+
+        {canCancel && (
+          <button
+            onClick={onCancel}
+            disabled={cancelling}
+            className="text-xs text-red-600 underline disabled:opacity-40"
+          >
+            {cancelling ? 'Cancelling…' : 'Cancel this order'}
+          </button>
+        )}
+      </div>
     </li>
   );
 }

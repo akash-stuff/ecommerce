@@ -22,6 +22,7 @@ export class ThemeService {
         description: true,
         metaTitle: true,
         metaDescription: true,
+        productDescription: true,
         isPublished: true,
         template: { select: { id: true, slug: true, name: true } },
         theme: true,
@@ -227,11 +228,22 @@ export class ThemeService {
   }
 
   updateStorefront(dto: UpdateStorefrontDto) {
+    const data = { ...dto } as Prisma.StoreUncheckedUpdateInput;
+
+    /**
+     * Blank means "remove it", not "store an empty string".
+     *
+     * The shared product description is rendered inside its own bordered block
+     * on every product page, and the storefront decides whether to draw that
+     * block by asking whether the value is present. An empty string is present,
+     * so clearing the field would leave an empty box under every product.
+     */
+    if (dto.productDescription !== undefined) {
+      data.productDescription = dto.productDescription.trim() || null;
+    }
+
     return this.get().then((store) =>
-      this.prisma.db.store.update({
-        where: { id: store.id },
-        data: dto as Prisma.StoreUpdateInput,
-      }),
+      this.prisma.db.store.update({ where: { id: store.id }, data }),
     );
   }
 }

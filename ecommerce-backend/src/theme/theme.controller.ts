@@ -11,6 +11,7 @@ import {
   UpdateThemeDto,
 } from './dto/theme.dto';
 import { BACKGROUND_FITS, BACKGROUND_PRESETS, LOGO_SIZES } from './backgrounds';
+import { SOCIAL_PLATFORMS } from './social-platforms';
 
 @ApiTags('Appearance')
 @ApiBearerAuth()
@@ -36,6 +37,7 @@ export class ThemeController {
       backgrounds: BACKGROUND_PRESETS,
       backgroundFits: BACKGROUND_FITS,
       logoSizes: LOGO_SIZES,
+      socialPlatforms: SOCIAL_PLATFORMS,
     };
   }
 

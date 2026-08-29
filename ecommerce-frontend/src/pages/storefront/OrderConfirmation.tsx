@@ -1,6 +1,11 @@
 import { Link, useLocation, useParams } from 'react-router-dom';
+import { useMutation } from '@tanstack/react-query';
+import { Download, Loader2 } from 'lucide-react';
 import { SuccessTick } from '@/features/checkout/OrderPlaced';
 import { useStore } from '@/features/theme/ThemeProvider';
+import { useCustomerStore } from '@/store/customer.store';
+import { customerService } from '@/services/customer.service';
+import { filenameFromDisposition, saveBlob } from '@/utils/download';
 import { formatMoney } from '@/utils/format';
 import type { Order } from '@/types/api';
 
@@ -16,7 +21,20 @@ import type { Order } from '@/types/api';
 export default function OrderConfirmation() {
   const { orderNumber } = useParams<{ orderNumber: string }>();
   const store = useStore();
+  const customer = useCustomerStore((s) => s.customer);
   const order = (useLocation().state as { order?: Order } | null)?.order ?? null;
+
+  /**
+   * The invoice route is scoped to the signed-in customer, which is what stops
+   * one shopper downloading another's — order numbers are sequential and
+   * guessable. A guest checkout has no account to scope to, so the button is
+   * only offered when there is one, and guests are told what to do instead.
+   */
+  const invoice = useMutation({
+    mutationFn: (number: string) => customerService.downloadInvoice(number),
+    onSuccess: ({ blob, disposition }, number) =>
+      saveBlob(blob, filenameFromDisposition(disposition, `invoice-${number}.pdf`)),
+  });
 
   if (!order) {
     return (
@@ -144,12 +162,43 @@ export default function OrderConfirmation() {
         </address>
       </section>
 
-      <Link
-        to="/"
-        className="mt-10 inline-block rounded-card bg-brand px-6 py-3 text-sm font-medium text-white"
-      >
-        Continue shopping
-      </Link>
+      <div className="mt-10 flex flex-wrap items-center gap-3">
+        <Link
+          to="/"
+          className="rounded-card bg-brand px-6 py-3 text-sm font-medium text-white"
+        >
+          Continue shopping
+        </Link>
+
+        {customer && (
+          <button
+            type="button"
+            onClick={() => invoice.mutate(order.orderNumber)}
+            disabled={invoice.isPending}
+            className="inline-flex items-center gap-2 rounded-card border border-ink-900 px-6 py-3 text-sm font-medium text-ink-900 transition-colors hover:bg-ink-50 disabled:opacity-40"
+          >
+            {invoice.isPending ? (
+              <Loader2 size={14} className="animate-spin" />
+            ) : (
+              <Download size={14} />
+            )}
+            {invoice.isPending ? 'Preparing…' : 'Download invoice'}
+          </button>
+        )}
+      </div>
+
+      {invoice.isError && (
+        <p className="mt-3 text-sm text-red-600">
+          {(invoice.error as { message?: string }).message ??
+            'That invoice could not be downloaded.'}
+        </p>
+      )}
+
+      {!customer && (
+        <p className="mt-4 text-sm text-ink-500">
+          Sign in with {order.customerEmail} to download an invoice for this order.
+        </p>
+      )}
 
       <p className="mt-6 text-xs text-ink-500">
         Keep {order.orderNumber} handy if you need to contact {store.name} about this order.

@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { apiClient, unwrap } from '@/services/api-client';
-import { orderService } from '@/services/admin.service';
+import { invoiceService, orderService } from '@/services/admin.service';
+import { filenameFromDisposition, saveBlob } from '@/utils/download';
 import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { StatusBadge } from '@/components/admin/DataTable';
 import { Field, FormError, Input, Modal, Textarea } from '@/components/admin/Modal';
@@ -49,6 +50,18 @@ export default function OrderDetail() {
     queryKey: ['admin-order', id],
     queryFn: () => orderService.get(id!),
     enabled: Boolean(id),
+  });
+
+  /**
+   * The same PDF the customer downloads, from the same renderer — so a shop
+   * answering "what does my invoice say" is looking at the document the shopper
+   * has, not an admin-only approximation of it.
+   */
+  const invoice = useMutation({
+    onError: (e) => toastFromError(e, 'That invoice could not be downloaded.'),
+    mutationFn: () => invoiceService.download(id!),
+    onSuccess: ({ blob, disposition }) =>
+      saveBlob(blob, filenameFromDisposition(disposition, `invoice-${id}.pdf`)),
   });
 
   const invalidate = () => {
@@ -170,6 +183,10 @@ export default function OrderDetail() {
             Record cash collected
           </SecondaryButton>
         )}
+
+        <SecondaryButton disabled={invoice.isPending} onClick={() => invoice.mutate()}>
+          {invoice.isPending ? 'Preparing…' : 'Download invoice'}
+        </SecondaryButton>
 
         {canCancel && (
           <button

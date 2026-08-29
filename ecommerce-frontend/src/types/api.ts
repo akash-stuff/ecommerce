@@ -71,6 +71,7 @@ export interface EditableTheme {
   description: string | null;
   metaTitle: string | null;
   metaDescription: string | null;
+  productDescription: string | null;
   isPublished: boolean;
   template: { id: string; slug: string; name: string } | null;
   theme: {
@@ -103,6 +104,11 @@ export interface StoreConfig {
   phone: string | null;
   metaTitle: string | null;
   metaDescription: string | null;
+  /**
+   * One block the shopkeeper wrote once, shown under every product's own
+   * description. Plain text — rendered as words, never as markup.
+   */
+  productDescription: string | null;
   template: { id: string; slug: string; name: string } | null;
   theme: StoreTheme;
 }
@@ -304,6 +310,16 @@ export interface Banner {
   linkUrl: string | null;
   placement: BannerPlacement;
   position: number;
+
+  /**
+   * Announcement-bar styling. All four are null unless the shopkeeper set them,
+   * and null means "the store's brand colour, white text and the body font".
+   */
+  backgroundColor: string | null;
+  textColor: string | null;
+  fontFamily: string | null;
+  /** 'sm' | 'md' | 'lg' */
+  fontSize: string | null;
 }
 
 /**
@@ -325,6 +341,8 @@ export interface Product {
   price: string;
   compareAtPrice: string | null;
   shortDescription: string | null;
+  /** The long copy. Present on the single-product endpoints, absent in lists. */
+  description?: string | null;
   stock: number;
   isFeatured: boolean;
   status: 'DRAFT' | 'ACTIVE' | 'ARCHIVED';

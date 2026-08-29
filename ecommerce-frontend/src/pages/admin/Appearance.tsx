@@ -8,6 +8,7 @@ import { Field, FormError, FormGrid, Input, Modal, Select, Textarea } from '@/co
 import { ImageUpload } from '@/components/admin/ImageUpload';
 import { SECTION_LABELS, TemplatePreview } from '@/components/admin/TemplatePreview';
 import { BACKGROUND_LABELS, surfaceFor } from '@/features/theme/backgrounds';
+import { SOCIAL_PLACEHOLDERS, SocialIcon, socialLabel } from '@/components/SocialIcon';
 import type { EditableTheme } from '@/types/api';
 import { toast, toastFromError } from '@/components/Toasts';
 
@@ -25,8 +26,13 @@ interface Draft {
   backgroundFit: string;
   loginImageUrl: string;
   loginMessage: string;
-  instagram: string;
-  facebook: string;
+  /**
+   * Platform name to profile URL, rather than one field per network. The
+   * storefront draws a mark for each key it knows, so the set of networks is
+   * data now — adding one is a line in the server's allowlist, not a new field
+   * on this form.
+   */
+  socialLinks: Record<string, string>;
   homepageLayout: string[];
   customCss: string;
 }
@@ -49,6 +55,7 @@ export default function Appearance() {
         backgrounds: string[];
         backgroundFits: string[];
         logoSizes: string[];
+        socialPlatforms: string[];
       }>(apiClient.get('/theme/options')),
   });
 
@@ -69,8 +76,7 @@ export default function Appearance() {
       backgroundFit: t.backgroundFit ?? 'cover',
       loginImageUrl: t.loginImageUrl ?? '',
       loginMessage: t.loginMessage ?? '',
-      instagram: t.socialLinks?.instagram ?? '',
-      facebook: t.socialLinks?.facebook ?? '',
+      socialLinks: t.socialLinks ?? {},
       homepageLayout: t.homepageLayout ?? [],
       customCss: t.customCss ?? '',
     });
@@ -104,7 +110,12 @@ export default function Appearance() {
           backgroundFit: d.backgroundFit,
           loginImageUrl: d.loginImageUrl,
           loginMessage: d.loginMessage,
-          socialLinks: { instagram: d.instagram, facebook: d.facebook },
+          /**
+           * Sent whole, blanks included. The server keeps http(s) URLs and
+           * drops everything else, so an emptied field is how a link is
+           * removed — filtering here first would make removal impossible.
+           */
+          socialLinks: d.socialLinks,
           homepageLayout: d.homepageLayout,
           customCss: d.customCss,
         }),
@@ -374,23 +385,78 @@ export default function Appearance() {
             </div>
           </Card>
 
-          <Card title="Social links">
-            <FormGrid>
-              <Field label="Instagram">
-                <Input
-                  value={draft.instagram}
-                  placeholder="https://instagram.com/…"
-                  onChange={(e) => set('instagram', e.target.value)}
-                />
-              </Field>
-              <Field label="Facebook">
-                <Input
-                  value={draft.facebook}
-                  placeholder="https://facebook.com/…"
-                  onChange={(e) => set('facebook', e.target.value)}
-                />
-              </Field>
-            </FormGrid>
+          <Card
+            title="Social links"
+            description="Each one you fill in appears in your storefront footer as that network's mark, not as its name."
+          >
+            <div className="space-y-2.5">
+              {(options.data?.socialPlatforms ?? Object.keys(draft.socialLinks)).map(
+                (platform) => (
+                  <div key={platform} className="flex items-center gap-3">
+                    {/* The mark beside the field, at the size the footer draws
+                        it, so what is being filled in is obvious without a
+                        label repeating the placeholder. */}
+                    <span
+                      className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border transition-colors ${
+                        draft.socialLinks[platform]
+                          ? 'border-ink-950 bg-ink-950 text-white'
+                          : 'border-ink-200 text-ink-400'
+                      }`}
+                    >
+                      <SocialIcon platform={platform} size={16} />
+                    </span>
+                    <Input
+                      value={draft.socialLinks[platform] ?? ''}
+                      aria-label={socialLabel(platform)}
+                      placeholder={SOCIAL_PLACEHOLDERS[platform] ?? 'https://…'}
+                      className="mt-0"
+                      onChange={(e) =>
+                        set('socialLinks', {
+                          ...draft.socialLinks,
+                          [platform]: e.target.value,
+                        })
+                      }
+                    />
+                  </div>
+                ),
+              )}
+            </div>
+
+            <p className="mt-3 text-xs text-ink-500">
+              Full web addresses only — anything that is not an https:// link is dropped when
+              saving. Empty a field to remove that mark.
+            </p>
+
+            {/* Networks a previous version of this form saved under names this
+                one does not offer. Shown rather than hidden: a link nobody can
+                see or remove is worse than an unfamiliar row. */}
+            {/* Guarded on `options.data`: before it arrives the list above is
+                already every stored key, and filtering against an empty
+                allowlist would draw each of them a second time. */}
+            {Object.keys(options.data ? draft.socialLinks : {})
+              .filter(
+                (platform) =>
+                  draft.socialLinks[platform] &&
+                  !(options.data?.socialPlatforms ?? []).includes(platform),
+              )
+              .map((platform) => (
+                <div key={platform} className="mt-3 flex items-center gap-3">
+                  <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-ink-200 text-ink-400">
+                    <SocialIcon platform={platform} size={16} />
+                  </span>
+                  <Input
+                    value={draft.socialLinks[platform]}
+                    aria-label={platform}
+                    className="mt-0"
+                    onChange={(e) =>
+                      set('socialLinks', {
+                        ...draft.socialLinks,
+                        [platform]: e.target.value,
+                      })
+                    }
+                  />
+                </div>
+              ))}
           </Card>
 
           <Card

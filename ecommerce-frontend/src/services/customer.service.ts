@@ -94,4 +94,21 @@ export const customerService = {
 
   cancelMyOrder: (orderNumber: string, reason?: string) =>
     unwrap<Order>(apiClient.post(`/orders/mine/${orderNumber}/cancel`, { reason })),
+
+  /**
+   * The shopper's own invoice, as a PDF.
+   *
+   * Fetched as a blob rather than linked to: the route is scoped to the signed-in
+   * customer and needs the bearer token, and a plain <a href> carries no
+   * Authorization header — it would download the sign-in page instead.
+   */
+  downloadInvoice: async (orderNumber: string) => {
+    const response = await apiClient.get(`/invoices/orders/mine/${orderNumber}`, {
+      responseType: 'blob',
+    });
+    return {
+      blob: response.data as Blob,
+      disposition: response.headers['content-disposition'] as string | undefined,
+    };
+  },
 };
