@@ -242,7 +242,25 @@ export interface StatusEmailData {
   orderNumber: string;
   customerName: string;
   status: string;
+  /**
+   * Why an order was cancelled or refunded. Shown under a heading that says
+   * "Reason", so it must only ever carry something that *is* one.
+   */
   reason?: string | null;
+  /**
+   * The parcel, when this update is a dispatch.
+   *
+   * Its own field rather than more prose in `reason`, which is where the
+   * courier and consignment number used to go: a shipped order then arrived
+   * with its tracking under a heading reading "Reason", as though something had
+   * gone wrong, and with the URL as dead text nobody could click.
+   */
+  tracking?: {
+    /** The carrier's name, already resolved. Never a stored code. */
+    courier: string;
+    consignment: string | null;
+    url: string | null;
+  } | null;
 }
 
 /** Wording per status, because "your order is PACKED" is not a sentence. */
@@ -312,9 +330,27 @@ export function orderStatusChanged(data: StatusEmailData, brand?: EmailBrand): R
         (data.reason
           ? spacer(16) + panel(panelLabel('Reason') + panelBody(e(data.reason)))
           : '') +
+        (data.tracking
+          ? spacer(16) +
+            panel(
+              panelLabel('Tracking') +
+                panelBody(
+                  e(data.tracking.courier) +
+                    (data.tracking.consignment
+                      ? `<br>${ref(data.tracking.consignment)}`
+                      : ''),
+                ),
+            )
+          : '') +
+        /**
+         * The parcel's own link wins over the account page when there is one:
+         * somebody reading "your order is on its way" wants the carrier, not a
+         * list of their orders.
+         */
         cta(
-          'View your orders',
-          store.storefrontUrl ? `${store.storefrontUrl}/account` : null,
+          data.tracking?.url ? 'Track your parcel' : 'View your orders',
+          data.tracking?.url ??
+            (store.storefrontUrl ? `${store.storefrontUrl}/account` : null),
           store.brandColor,
         ) +
         spacer(28) +
@@ -330,6 +366,18 @@ export function orderStatusChanged(data: StatusEmailData, brand?: EmailBrand): R
     ``,
     copy.line,
     ...(data.reason ? [``, `Reason: ${data.reason}`] : []),
+    ...(data.tracking
+      ? [
+          ``,
+          `Carrier: ${data.tracking.courier}`,
+          ...(data.tracking.consignment
+            ? [`Consignment: ${data.tracking.consignment}`]
+            : []),
+          // Bare, with no angle brackets around it: a test forbids '<' anywhere
+          // in the text part, and mail clients linkify a bare URL anyway.
+          ...(data.tracking.url ? [`Track it: ${data.tracking.url}`] : []),
+        ]
+      : []),
     ``,
     `${data.storeName} · ${data.storeEmail}`,
   ].join('\n');

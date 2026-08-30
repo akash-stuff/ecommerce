@@ -119,6 +119,11 @@ add(
       orderNumber: 'ORD-20260829-8F31C2',
       customerName: 'Asha Rao',
       status: 'SHIPPED',
+      tracking: {
+        courier: 'Delhivery',
+        consignment: 'DL0293841772IN',
+        url: 'https://www.delhivery.com/track/package/DL0293841772IN',
+      },
     },
     branded,
   ),

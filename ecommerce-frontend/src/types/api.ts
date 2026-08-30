@@ -195,7 +195,14 @@ export interface OrderItem {
  */
 export interface Shipment {
   id: string;
+  /** The stored courier code — the identifier, not what to render. */
   provider: string;
+  /**
+   * The carrier's name, resolved server-side so the storefront does not keep a
+   * second copy of the courier list that can drift from the real one. Optional
+   * only so a response from an older API build still typechecks.
+   */
+  courierName?: string;
   trackingNumber: string | null;
   trackingUrl: string | null;
   status: string;

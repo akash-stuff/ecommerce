@@ -102,4 +102,62 @@ describe('StatusBadge', () => {
     render(<StatusBadge value="FAILED" />);
     expect(screen.getByText('failed').className).toContain('red');
   });
+
+  /**
+   * Every value any screen actually passes, checked against the tone map.
+   *
+   * The failure this guards is silent: a status with no entry still renders,
+   * still reads correctly, and is simply grey — so a reviewer sees a working
+   * badge and a shopkeeper loses the one cue that told approved from rejected
+   * at a glance. Two enums had drifted out of the map exactly this way.
+   *
+   * Add the enum value here when the schema gains one; the list is meant to be
+   * the full set, not a sample.
+   */
+  const MEANINGFUL = [
+    // OrderStatus
+    'PENDING', 'CONFIRMED', 'PROCESSING', 'PACKED', 'SHIPPED', 'DELIVERED',
+    'CANCELLED', 'REFUNDED',
+    // PaymentStatus
+    'AUTHORIZED', 'PAID', 'PARTIALLY_REFUNDED',
+    // ShipmentStatus
+    'LABEL_CREATED', 'IN_TRANSIT', 'OUT_FOR_DELIVERY', 'RETURNED',
+    // ReviewStatus
+    'APPROVED', 'REJECTED',
+    // NotificationStatus
+    'QUEUED', 'SENT', 'FAILED',
+    // DomainStatus
+    'VERIFYING', 'ACTIVE',
+    // SubscriptionStatus
+    'TRIALING', 'PAST_DUE',
+    // TenantStatus and the literals screens pass directly
+    'SUSPENDED', 'published', 'subscribed',
+  ];
+
+  it.each(MEANINGFUL)('gives %s a tone rather than falling through to grey', (value) => {
+    const { container } = render(<StatusBadge value={value} />);
+    const badge = container.querySelector('span');
+
+    // `ink` is the neutral fallback. Anything meaningful must not land on it.
+    expect(`${value}: ${badge?.className}`).not.toContain('bg-ink-100');
+  });
+
+  /** The states that are genuinely inert should still read as inert. */
+  it.each(['draft', 'archived', 'retired', 'opted out'])(
+    'leaves %s neutral',
+    (value) => {
+      const { container } = render(<StatusBadge value={value} />);
+      expect(container.querySelector('span')?.className).toContain('bg-ink-100');
+    },
+  );
+
+  /**
+   * Colour alone fails for the ~8% of men with a colour-vision deficiency, and
+   * red/green is the exact pair they lose.
+   */
+  it('carries a dot as well as a colour', () => {
+    const { container } = render(<StatusBadge value="DELIVERED" />);
+    expect(container.querySelectorAll('span')).toHaveLength(2);
+    expect(container.querySelector('span span')).toHaveAttribute('aria-hidden', 'true');
+  });
 });

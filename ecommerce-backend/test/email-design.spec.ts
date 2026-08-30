@@ -447,3 +447,111 @@ describe('the button', () => {
     expect(mail.html).toContain('href="https://northwind.test/"');
   });
 });
+
+/**
+ * The dispatch email.
+ *
+ * Tracking used to be formatted into `reason`, which the template renders under
+ * a heading saying "Reason" — so a shipped order announced its carrier as
+ * though something had gone wrong, with the URL as dead text.
+ */
+describe('the dispatch email', () => {
+  const shipped = (over: Record<string, unknown> = {}) =>
+    orderStatusChanged(
+      {
+        storeName: 'Northwind',
+        storeEmail: 'help@northwind.test',
+        orderNumber: 'ORD-1',
+        customerName: 'Asha',
+        status: 'SHIPPED',
+        tracking: {
+          courier: 'Delhivery',
+          consignment: 'DL0293841772IN',
+          url: 'https://www.delhivery.com/track/package/DL0293841772IN',
+        },
+        ...over,
+      },
+      brand,
+    );
+
+  it('gives tracking its own heading, not the one meant for cancellations', () => {
+    const mail = shipped();
+    expect(mail.html).toContain('Tracking');
+    expect(mail.html).not.toContain('Reason');
+  });
+
+  it('names the carrier and shows the consignment number', () => {
+    const mail = shipped();
+    expect(mail.html).toContain('Delhivery');
+    expect(mail.html).toContain('DL0293841772IN');
+  });
+
+  /** A shopper reading "on its way" wants the carrier, not a list of orders. */
+  it('points its button at the parcel rather than the account page', () => {
+    const mail = shipped();
+    expect(mail.html).toContain('Track your parcel');
+    expect(mail.html).toContain('delhivery.com/track/package/DL0293841772IN');
+    expect(mail.html).not.toContain('View your orders');
+  });
+
+  it('falls back to the account page when the carrier has no link', () => {
+    const mail = shipped({ tracking: { courier: 'India Post', consignment: 'EE1', url: null } });
+    expect(mail.html).toContain('View your orders');
+    expect(mail.html).toContain('India Post');
+    expect(mail.html).toContain('EE1');
+  });
+
+  it('carries the same facts in the plain-text part, with no markup', () => {
+    const mail = shipped();
+    expect(mail.text).toContain('Carrier: Delhivery');
+    expect(mail.text).toContain('Consignment: DL0293841772IN');
+    expect(mail.text).toContain('https://www.delhivery.com/track/package/DL0293841772IN');
+    // Pinned by an existing test too, and easy to break with an autolink.
+    expect(mail.text).not.toContain('<');
+  });
+
+  it('says nothing about tracking on an update that has none', () => {
+    const mail = orderStatusChanged(
+      {
+        storeName: 'Northwind',
+        storeEmail: 'help@northwind.test',
+        orderNumber: 'ORD-1',
+        customerName: 'Asha',
+        status: 'CONFIRMED',
+      },
+      brand,
+    );
+    expect(mail.html).not.toContain('Tracking');
+    expect(mail.text).not.toContain('Carrier:');
+  });
+
+  /** A cancellation reason is a different thing and keeps its own heading. */
+  it('still reports a cancellation reason separately', () => {
+    const mail = orderStatusChanged(
+      {
+        storeName: 'Northwind',
+        storeEmail: 'help@northwind.test',
+        orderNumber: 'ORD-1',
+        customerName: 'Asha',
+        status: 'CANCELLED',
+        reason: 'Out of stock',
+      },
+      brand,
+    );
+    expect(mail.html).toContain('Reason');
+    expect(mail.text).toContain('Reason: Out of stock');
+  });
+
+  /**
+   * A consignment number is typed by a person in the admin and lands in an
+   * HTML email, so it gets the same treatment as a product name.
+   */
+  it('escapes a hostile consignment number', () => {
+    const mail = shipped({
+      tracking: { courier: '<script>x</script>', consignment: '<img src=x>', url: null },
+    });
+    expect(mail.html).not.toContain('<script>x</script>');
+    expect(mail.html).not.toContain('<img src=x>');
+    expect(mail.html).toContain('&lt;');
+  });
+});

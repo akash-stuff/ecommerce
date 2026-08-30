@@ -219,12 +219,22 @@ export class ShipmentsService {
         orderNumber: order.orderNumber,
         customerName: order.customerEmail,
         status: 'SHIPPED',
-        // Tracking belongs in the email that announces the dispatch, not in a
-        // separate message the customer has to go looking for. The carrier is
-        // named rather than coded: "DELHIVERY" is a database value, not
-        // something to put in front of a shopper.
-        reason: trackingNumber
-          ? `${courierName(provider)} · ${trackingNumber}${trackingUrl ? ` — ${trackingUrl}` : ''}`
+        /**
+         * Tracking belongs in the email that announces the dispatch, not in a
+         * separate message the customer has to go looking for — and in its own
+         * field, not in `reason`. Prose in `reason` was rendered under a
+         * heading saying "Reason", which on a shipped order reads as though
+         * something had gone wrong.
+         *
+         * The carrier is named rather than coded: "DELHIVERY" is a database
+         * value, not something to put in front of a shopper.
+         */
+        tracking: trackingNumber || trackingUrl
+          ? {
+              courier: courierName(provider),
+              consignment: trackingNumber,
+              url: trackingUrl,
+            }
           : null,
       }, order.customerPhone);
     } catch {

@@ -235,6 +235,15 @@ const STATE_TONE: Record<string, Tone> = {
   sent: 'settled',
   queued: 'waiting',
 
+  // Reviews. The moderation queue is the one screen whose entire job is
+  // telling these two apart, and without entries here both rendered grey.
+  approved: 'settled',
+  rejected: 'wrong',
+
+  // Subscriptions, on the platform console.
+  trialing: 'moving',
+  past_due: 'waiting',
+
   // Catalogue and content. A page is published, not "active" — the pair a
   // shopkeeper is choosing between on that screen is published/draft.
   active: 'settled',

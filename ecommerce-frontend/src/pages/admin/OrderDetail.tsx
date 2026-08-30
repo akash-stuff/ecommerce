@@ -5,6 +5,9 @@ import { Truck } from 'lucide-react';
 import { apiClient, unwrap } from '@/services/api-client';
 import { invoiceService, orderService } from '@/services/admin.service';
 import { filenameFromDisposition, saveBlob } from '@/utils/download';
+// The shared shape, not a second local copy: the storefront and this screen
+// render the same rows, and two declarations of one type are two that can drift.
+import type { Shipment } from '@/types/api';
 import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { StatusBadge } from '@/components/admin/DataTable';
 import { Field, FormError, Input, Modal, Select, Textarea } from '@/components/admin/Modal';
@@ -16,16 +19,6 @@ import { toast, toastFromError } from '@/components/Toasts';
  * returns INVALID_STATUS_TRANSITION either way — but offering only the moves
  * that can succeed is kinder than a button that always errors.
  */
-interface Shipment {
-  id: string;
-  provider: string;
-  trackingNumber: string | null;
-  trackingUrl: string | null;
-  status: string;
-  shippedAt: string | null;
-  deliveredAt: string | null;
-}
-
 /** From `GET /shipping/couriers`, so the select cannot offer what the API refuses. */
 interface Courier {
   code: string;

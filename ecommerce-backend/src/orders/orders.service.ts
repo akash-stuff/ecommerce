@@ -52,6 +52,8 @@ const RESTOCK_ON_CANCEL: OrderStatus[] = [
   'PACKED',
 ];
 
+import { courierName } from '../shipping/couriers';
+
 /**
  * What a shopper may see of a parcel.
  *
@@ -72,6 +74,27 @@ const SHOPPER_SHIPMENT = {
   },
   orderBy: { createdAt: 'desc' },
 } as const;
+
+/**
+ * Adds the carrier's name to every parcel on an order.
+ *
+ * Resolved here rather than in the storefront, which used to keep its own copy
+ * of the courier list. Two lists mean two lists that drift: adding a carrier
+ * server-side would have left shoppers reading `XPRESSBEES` until somebody
+ * remembered the other file. The code is still sent — it is the stable
+ * identifier — and `courierName` is what the page renders.
+ */
+function withCourierNames<T extends { shipments?: { provider: string }[] }>(order: T): T {
+  if (!order.shipments) return order;
+
+  return {
+    ...order,
+    shipments: order.shipments.map((parcel) => ({
+      ...parcel,
+      courierName: courierName(parcel.provider),
+    })),
+  };
+}
 
 @Injectable()
 export class OrdersService {
@@ -418,7 +441,7 @@ export class OrdersService {
       this.prisma.db.order.count({ where }),
     ]);
 
-    return paginate(items, total, query);
+    return paginate(items.map(withCourierNames), total, query);
   }
 
   async findMineByNumber(orderNumber: string) {
@@ -433,7 +456,7 @@ export class OrdersService {
       },
     });
     if (!order) throw this.notFound();
-    return order;
+    return withCourierNames(order);
   }
 
   // --- Management ------------------------------------------------------------
