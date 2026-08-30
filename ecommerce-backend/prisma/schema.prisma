@@ -96,7 +96,13 @@ model Tenant {
 /// this table must not be able to complete someone else's registration.
 model EmailOtp {
   id        String   @id @default(uuid())
-  tenantId  String
+  /// Null for a platform-level challenge.
+  ///
+  /// Staff and platform administrators sign in on tenant-less admin hostnames
+  /// and a `User` may staff several stores, so a password reset for one belongs
+  /// to no single store — and a super admin belongs to none at all. Customer
+  /// challenges keep their tenant, because a customer account *is* per store.
+  tenantId  String?
   email     String
   /// Argon2 hash of the code. The code itself is only ever in the email.
   codeHash  String
@@ -112,10 +118,15 @@ model EmailOtp {
   consumedAt DateTime?
   createdAt DateTime @default(now())
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   /// One live challenge per address per purpose per store: a resend replaces
   /// the previous code rather than leaving several valid at once.
+  ///
+  /// Postgres treats NULLs as distinct, so this constraint does not cover
+  /// platform-level rows. A partial unique index added in
+  /// 20260830090000_platform_email_otp does that job for them; it cannot be
+  /// expressed here, so do not assume this line is the whole guarantee.
   @@unique([tenantId, email, purpose])
   @@index([expiresAt])
   @@map("email_otps")

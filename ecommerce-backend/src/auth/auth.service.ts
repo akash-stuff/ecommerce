@@ -25,6 +25,8 @@ import {
   VerifyEmailOtpDto,
 } from './dto/auth.dto';
 import { EmailOtpService, OTP_TTL_SECONDS } from './email-otp.service';
+import { hashPassword } from '../common/crypto/password';
+import { bareAddress } from '../notifications/mail-address';
 
 /**
  * Namespaces the challenge, so a future password-reset code cannot be spent to
@@ -34,6 +36,15 @@ const OTP_PURPOSE_REGISTER = 'customer.register';
 
 /** A reset code must not be spendable as a registration, or the reverse. */
 const OTP_PURPOSE_RESET = 'customer.reset';
+
+/**
+ * A reset for someone who signs in to an admin console.
+ *
+ * A separate purpose from the customer one, and not merely for tidiness: the
+ * same address can be both a shopper at a store and a member of staff, and a
+ * code issued for one must not complete the other.
+ */
+const OTP_PURPOSE_STAFF_RESET = 'staff.reset';
 
 export type CurrentActor =
   | {
@@ -401,6 +412,99 @@ overrides = membership.permissions;
     }
 
     return { sent: true };
+  }
+
+  /**
+   * Step one of an admin password reset: prove the address is readable.
+   *
+   * Always reports success, whether or not the account exists. Saying otherwise
+   * turns this into a way to discover which addresses have administrative
+   * access to a store on the platform, which is a far better list to hold than
+   * the shopper equivalent.
+   *
+   * Runs unscoped and needs no tenant: staff sign in on tenant-less admin
+   * hostnames, a `User` may staff several stores, and a platform administrator
+   * belongs to none.
+   */
+  async forgotStaffPassword(dto: ResendEmailOtpDto): Promise<{ sent: true }> {
+    const email = dto.email.toLowerCase();
+
+    const user = await this.prisma.runUnscoped((db) =>
+      db.user.findUnique({ where: { email }, select: { id: true, isActive: true } }),
+    );
+
+    // A deactivated account is treated as absent. Re-enabling it is somebody's
+    // decision, not something a password reset should route around.
+    if (!user || !user.isActive) return { sent: true };
+
+    const { code } = await this.otp.issue(email, OTP_PURPOSE_STAFF_RESET, { userId: user.id });
+
+    const platformName = this.config.get<string>('platform.domain') ?? 'the platform';
+    const supportEmail =
+      bareAddress(this.config.get<string>('smtp.from')) ?? `support@${platformName}`;
+
+    try {
+      await this.notifications.staffPasswordResetCode(email, {
+        platformName,
+        supportEmail,
+        code,
+        expiresInMinutes: Math.round(OTP_TTL_SECONDS / 60),
+      });
+    } catch (error) {
+      // The challenge is dropped so someone who retries is not held off by the
+      // cooldown on a code that was never delivered.
+      await this.otp.forget(email, OTP_PURPOSE_STAFF_RESET);
+      this.logger.error(`Could not send staff reset code: ${(error as Error).message}`);
+    }
+
+    return { sent: true };
+  }
+
+  /**
+   * Step two: the code is right, so the password changes.
+   *
+   * Deliberately does **not** sign the person in, unlike the customer flow.
+   * A staff session carries a tenant and a permission set chosen at login, and
+   * a `User` who staffs three stores has no single obvious one to be dropped
+   * into — so this returns them to the sign-in form, where that choice is made
+   * the way it always is.
+   *
+   * Every existing session is revoked. Someone resetting a password is often
+   * doing it *because* they believe somebody else has it.
+   */
+  async resetStaffPassword(dto: ResetPasswordDto): Promise<{ reset: true }> {
+    const email = dto.email.toLowerCase();
+
+    const pending = await this.otp.consume(
+      email,
+      OTP_PURPOSE_STAFF_RESET,
+      dto.code.replace(/[\s-]/g, ''),
+    );
+
+    const userId = (pending as { userId?: string } | null)?.userId;
+    if (!userId) {
+      // The challenge carried no account, which means it was not issued by the
+      // method above. Refused rather than guessed at.
+      throw new BadRequestException({
+        message: 'That code is not valid or has expired. Request a new one.',
+        code: 'OTP_INVALID',
+      });
+    }
+
+    const passwordHash = await hashPassword(dto.password);
+
+    await this.prisma.runUnscoped(async (db) => {
+      await db.user.update({ where: { id: userId }, data: { passwordHash } });
+      await db.refreshToken.updateMany({
+        where: { userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    });
+
+    await this.otp.forget(email, OTP_PURPOSE_STAFF_RESET);
+    this.logger.warn(`Staff password reset completed for ${email}`);
+
+    return { reset: true };
   }
 
   /**

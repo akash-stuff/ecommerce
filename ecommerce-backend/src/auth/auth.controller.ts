@@ -28,6 +28,42 @@ export class AuthController {
     return this.auth.login(dto);
   }
 
+  /**
+   * The admin console's own "I forgot my password".
+   *
+   * `@TenantOptional`, like the sign-in above it: staff reach this on a
+   * tenant-less admin hostname, and the account being reset belongs to a
+   * person rather than to a store.
+   *
+   * Throttled harder than the customer equivalent. This endpoint speaks about
+   * accounts with administrative access, and although it never says whether one
+   * exists, a slow trickle of requests is still not something to permit.
+   */
+  @Public()
+  @TenantOptional()
+  @Post('forgot-password')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 3, ttl: 60_000 } })
+  @ApiOperation({ summary: 'Email a reset code to a staff or platform account' })
+  forgotStaffPassword(@Body() dto: ResendEmailOtpDto) {
+    return this.auth.forgotStaffPassword(dto);
+  }
+
+  @Public()
+  @TenantOptional()
+  @Post('reset-password')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({
+    summary: 'Set a new admin password with the emailed code',
+    description:
+      'Every session for this account is signed out. Returns no tokens: a staff ' +
+      'session carries a tenant chosen at sign-in, so the caller signs in again.',
+  })
+  resetStaffPassword(@Body() dto: ResetPasswordDto) {
+    return this.auth.resetStaffPassword(dto);
+  }
+
   @Public()
   @Post('customer/register')
   @Throttle({ default: { limit: 3, ttl: 60_000 } })

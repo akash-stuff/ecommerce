@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { AlertTriangle, ArrowLeft, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
+import { apiClient, unwrap } from '@/services/api-client';
+import { CodeInput } from '@/components/CodeInput';
 import { EverystoreMark, Wordmark } from '@/features/platform/brand';
 
 const schema = z.object({
@@ -12,6 +14,13 @@ const schema = z.object({
   password: z.string().min(1, 'Enter your password.'),
 });
 type FormValues = z.infer<typeof schema>;
+
+/** One primary button, so sign-in and reset cannot drift apart. */
+const SUBMIT =
+  'inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 text-sm ' +
+  'font-medium text-white shadow-glow transition-all hover:-translate-y-px hover:shadow-lifted ' +
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 ' +
+  'disabled:translate-y-0 disabled:opacity-60 disabled:shadow-glow-sm';
 
 /** Shared by both inputs so a focus ring never disagrees between them. */
 const FIELD =
@@ -26,6 +35,14 @@ export default function Login() {
   const location = useLocation();
   const [formError, setFormError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
+  /**
+   * The reset flow replaces the form rather than opening a dialog: it is the
+   * same task at the same address, and a modal over a sign-in screen reads as
+   * an interruption of something the person had not started.
+   */
+  const [resetting, setResetting] = useState(false);
+  /** Carried back after a reset, so the sign-in form says it worked. */
+  const [notice, setNotice] = useState<string | null>(null);
 
   const {
     register,
@@ -115,10 +132,26 @@ export default function Login() {
               <EverystoreMark size={30} />
             </span>
 
+            {resetting ? (
+              <ResetFlow
+                onDone={(message) => {
+                  setResetting(false);
+                  setNotice(message);
+                }}
+                onCancel={() => setResetting(false)}
+              />
+            ) : (
+              <>
             <h1 className="mt-5 font-display text-2xl tracking-tight text-ink-950 lg:mt-0">
               Sign in
             </h1>
             <p className="mt-1.5 text-sm text-ink-500">Manage your store.</p>
+
+            {notice && (
+              <p className="mt-4 rounded-xl border border-green-200 bg-green-50 px-3 py-2.5 text-xs text-green-800">
+                {notice}
+              </p>
+            )}
 
             <form onSubmit={handleSubmit(onSubmit)} className="mt-8 space-y-5" noValidate>
               <div>
@@ -178,6 +211,20 @@ export default function Login() {
                 )}
               </div>
 
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFormError(null);
+                    setNotice(null);
+                    setResetting(true);
+                  }}
+                  className="rounded text-xs font-medium text-brand hover:underline focus:outline-none focus-visible:ring-1 focus-visible:ring-brand"
+                >
+                  Forgot your password?
+                </button>
+              </div>
+
               {formError && (
                 <p
                   role="alert"
@@ -202,9 +249,232 @@ export default function Login() {
               Shopping at one of these stores? Sign in on that store&apos;s own
               site instead — this door is for running one.
             </p>
+              </>
+            )}
           </div>
         </div>
       </div>
     </div>
+  );
+}
+
+
+/**
+ * "I forgot my password", for a store owner or platform administrator.
+ *
+ * Two steps, both against tenant-less routes: an admin account belongs to a
+ * person, not to a shop, and one login may open several. The email arrives from
+ * the platform rather than from a store for the same reason.
+ *
+ * Step one always reports success, whether or not the address has an account.
+ * This screen must not become a way to discover which addresses can administer
+ * a store — which is why the copy says "if it has an account" rather than
+ * "we have sent you a code".
+ */
+function ResetFlow({
+  onDone,
+  onCancel,
+}: {
+  onDone: (message: string) => void;
+  onCancel: () => void;
+}) {
+  const [step, setStep] = useState<'email' | 'code'>('email');
+  const [email, setEmail] = useState('');
+  const [code, setCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [rejected, setRejected] = useState(0);
+  const [resendIn, setResendIn] = useState(0);
+
+  // The cooldown the server enforces, shown rather than left to be discovered
+  // by pressing a button that refuses.
+  useEffect(() => {
+    if (resendIn <= 0) return;
+    const tick = window.setInterval(() => setResendIn((s) => (s > 0 ? s - 1 : 0)), 1000);
+    return () => window.clearInterval(tick);
+  }, [resendIn]);
+
+  const request = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      await unwrap<{ sent: true }>(
+        apiClient.post('/auth/forgot-password', { email: email.trim().toLowerCase() }),
+      );
+      setStep('code');
+      setResendIn(60);
+    } catch (e) {
+      setError((e as { message?: string }).message ?? 'Could not send a code.');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      await unwrap<{ reset: true }>(
+        apiClient.post('/auth/reset-password', {
+          email: email.trim().toLowerCase(),
+          code,
+          password,
+        }),
+      );
+      // Deliberately not signed in: a staff session carries a tenant chosen at
+      // sign-in, and someone who staffs three stores has no obvious one.
+      onDone('Your password has been changed. Sign in with it.');
+    } catch (err) {
+      setError((err as { message?: string }).message ?? 'That did not work.');
+      setRejected((n) => n + 1);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <>
+      <h1 className="mt-5 font-display text-2xl tracking-tight text-ink-950 lg:mt-0">
+        {step === 'email' ? 'Reset your password' : 'Check your email'}
+      </h1>
+      <p className="mt-1.5 text-sm text-ink-500">
+        {step === 'email'
+          ? 'We will email you a code to set a new one.'
+          : `If ${email} has an account, a 6-digit code is on its way.`}
+      </p>
+
+      {step === 'email' ? (
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            void request();
+          }}
+          className="mt-8 space-y-5"
+          noValidate
+        >
+          <div>
+            <label htmlFor="reset-email" className="block text-sm font-medium text-ink-700">
+              Email
+            </label>
+            <input
+              id="reset-email"
+              type="email"
+              autoComplete="email"
+              required
+              autoFocus
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@yourstore.com"
+              disabled={busy}
+              className={`mt-1.5 ${FIELD}`}
+            />
+          </div>
+
+          {error && (
+            <p
+              role="alert"
+              className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700"
+            >
+              <AlertTriangle size={14} className="mt-px shrink-0" />
+              <span>{error}</span>
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={busy || !email.trim()}
+            className={SUBMIT}
+          >
+            {busy && <Loader2 size={14} className="animate-spin" />}
+            {busy ? 'Sending…' : 'Send the code'}
+          </button>
+        </form>
+      ) : (
+        <form onSubmit={submit} className="mt-8 space-y-5" noValidate>
+          <CodeInput
+            value={code}
+            onChange={(next) => {
+              setCode(next);
+              if (error) setError(null);
+            }}
+            disabled={busy}
+            invalid={Boolean(error)}
+            attempt={rejected}
+          />
+
+          <div>
+            <label htmlFor="new-password" className="block text-sm font-medium text-ink-700">
+              New password
+            </label>
+            <input
+              id="new-password"
+              type="password"
+              autoComplete="new-password"
+              required
+              minLength={8}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              disabled={busy}
+              className={`mt-1.5 ${FIELD}`}
+            />
+            {/* Mirrors the server's own rule, so the button is not a dead end. */}
+            <p className="mt-1.5 text-xs text-ink-500">At least 8 characters.</p>
+          </div>
+
+          {error && (
+            <p
+              role="alert"
+              className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700"
+            >
+              <AlertTriangle size={14} className="mt-px shrink-0" />
+              <span>{error}</span>
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={busy || code.length < 6 || password.length < 8}
+            className={SUBMIT}
+          >
+            {busy && <Loader2 size={14} className="animate-spin" />}
+            {busy ? 'Saving…' : 'Change password and sign in'}
+          </button>
+
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+            <button
+              type="button"
+              onClick={() => void request()}
+              disabled={busy || resendIn > 0}
+              className="font-medium text-brand disabled:text-ink-400"
+            >
+              {resendIn > 0 ? `Send another in ${resendIn}s` : 'Send another code'}
+            </button>
+            <button
+              type="button"
+              onClick={() => setStep('email')}
+              className="text-ink-500 underline"
+            >
+              Use a different email
+            </button>
+          </div>
+        </form>
+      )}
+
+      <button
+        type="button"
+        onClick={onCancel}
+        className="mt-8 inline-flex items-center gap-1.5 text-sm text-ink-500 transition-colors hover:text-ink-950"
+      >
+        <ArrowLeft size={14} />
+        Back to sign in
+      </button>
+
+      <p className="mt-6 text-xs leading-relaxed text-ink-500">
+        Changing it signs you out everywhere. A sign-in belongs to a person, so if
+        you run more than one store this is the password for all of them.
+      </p>
+    </>
   );
 }

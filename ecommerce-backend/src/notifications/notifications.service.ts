@@ -75,7 +75,7 @@ export class NotificationsService {
    *
    * Never throws. A branding lookup must not be able to fail a receipt.
    */
-  private async brandFor(tenantId: string, fallbackEmail: string): Promise<EmailBrand> {
+  private async brandFor(tenantId: string | null, fallbackEmail: string): Promise<EmailBrand> {
     const platformDefault: EmailBrand = {
       storeName: 'The store',
       storeEmail: fallbackEmail,
@@ -83,6 +83,10 @@ export class NotificationsService {
       logoUrl: null,
       storefrontUrl: null,
     };
+
+    // A platform notice has no store to be branded as, and asking for one would
+    // return whichever store sorted first.
+    if (!tenantId) return platformDefault;
 
     try {
       const store = await this.prisma.runUnscoped((db) =>
@@ -124,7 +128,9 @@ export class NotificationsService {
    * linking a shopper at a hostname that does not resolve is worse than not
    * linking at all.
    */
-  private async storefrontUrl(tenantId: string): Promise<string | null> {
+  private async storefrontUrl(tenantId: string | null): Promise<string | null> {
+    if (!tenantId) return null;
+
     const domain = await this.prisma.runUnscoped((db) =>
       db.domain.findFirst({
         where: { tenantId, status: 'ACTIVE' },
@@ -353,6 +359,40 @@ export class NotificationsService {
     });
   }
 
+  /**
+   * The reset code for someone who signs in to an admin console.
+   *
+   * Sent as the platform, not as a store, and that is the whole reason it is a
+   * separate method from `passwordResetCode`. Staff sign in on a tenant-less
+   * hostname and one `User` can staff several shops, so an email dressed as one
+   * of them would be misleading — and a platform administrator belongs to no
+   * store at all, which would leave nothing to dress it as.
+   *
+   * Awaited by the caller, like the customer reset: reporting "check your
+   * email" when the send failed leaves someone waiting for a code that is not
+   * coming.
+   */
+  async staffPasswordResetCode(
+    to: string,
+    data: { platformName: string; supportEmail: string; code: string; expiresInMinutes: number },
+  ) {
+    return this.deliverEmail({
+      tenantId: null,
+      event: 'staff.passwordReset',
+      to,
+      // The code is deliberately absent: this column is stored, and a stored
+      // code outlives the ten minutes it was meant to be usable for.
+      payload: { expiresInMinutes: data.expiresInMinutes },
+      rendered: passwordResetCode({
+        storeName: data.platformName,
+        storeEmail: data.supportEmail,
+        code: data.code,
+        expiresInMinutes: data.expiresInMinutes,
+      }),
+      fromName: data.platformName,
+    });
+  }
+
   // --- Admin log -------------------------------------------------------------
 
   async findAll(query: PaginationQueryDto): Promise<PaginatedResult<unknown>> {
@@ -520,7 +560,8 @@ export class NotificationsService {
    * not propagated into the caller's transaction.
    */
   private async deliverEmail(input: {
-    tenantId: string;
+    /** Null for a platform notice; `Notification.tenantId` is nullable for it. */
+    tenantId: string | null;
     event: string;
     to: string;
     payload: Record<string, unknown>;
@@ -601,7 +642,7 @@ export class NotificationsService {
 
   /** Returns the row id, or null when even queuing failed. */
   private async queue(input: {
-    tenantId: string;
+    tenantId: string | null;
     channel: NotificationChannel;
     event: string;
     recipient: string;
