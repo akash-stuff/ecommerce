@@ -9,6 +9,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { tenantUrl } from '@/config/env';
 import { Toaster } from '@/components/Toasts';
 import { PERMISSIONS } from '@/config/permissions';
+import { Lockup } from '@/features/platform/brand';
 
 /**
  * Grouped rather than one flat list of fifteen.
@@ -102,9 +103,19 @@ export function AdminLayout() {
   const sidebar = (
     <>
       <div className="flex h-16 items-center justify-between px-5">
-        <span className="font-display text-sm font-semibold tracking-tight text-ink-950">
-          Store admin
-        </span>
+        {/*
+          The platform's own lockup, not the shop's, and on its own.
+
+          No "Store admin" chip beside it: this is the ordinary console, and a
+          label saying so is only worth the space on the platform one, where it
+          warns that an action reaches every tenant. Here it named the obvious.
+
+          The lockup paints itself rather than reading the tenant theme, so a
+          shop whose brand colour is pale yellow does not get an unreadable
+          wordmark in its own admin. The store's own name and logo belong on the
+          storefront and in Appearance, where the owner controls them.
+        */}
+        <Lockup size="sm" />
         <button
           type="button"
           onClick={() => setDrawerOpen(false)}
@@ -226,9 +237,7 @@ export function AdminLayout() {
           >
             <Menu size={20} />
           </button>
-          <span className="font-display text-sm font-semibold tracking-tight text-ink-950">
-            Store admin
-          </span>
+          <Lockup size="sm" />
         </div>
 
         <div className="min-w-0 flex-1">

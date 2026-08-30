@@ -2,6 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsArray,
   IsBoolean,
+  IsEmail,
   IsHexColor,
   IsIn,
   IsObject,
@@ -10,6 +11,7 @@ import {
   IsUUID,
   Length,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 import { IsUrlOrEmpty } from '../../common/decorators/is-url-or-empty';
 import { MAX_CUSTOM_CSS_LENGTH } from '../css-sanitiser';
@@ -115,6 +117,51 @@ export class UpdateStorefrontDto {
   @IsOptional() @IsString() @MaxLength(2000) productDescription?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isPublished?: boolean;
+
+  // ---------------------------------------------------------------------------
+  // HOW A CUSTOMER REACHES THE SHOP
+  //
+  // These were editable nowhere. The columns existed and three subsystems read
+  // them — the storefront footer prints the email under every page, every
+  // transactional email signs off with it ("Questions? Contact ..."), and an
+  // invoice falls back to it and to the address when the invoicing form is
+  // blank — but the only value they ever held was the one typed by whoever
+  // created the tenant. A shopkeeper who changed premises or moved off a
+  // personal address had no way to say so.
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Required, not clearable, and the reason is on the page: this address is
+   * printed in the storefront footer and on the foot of every order email. An
+   * empty string here would publish a shop with no way to reach it, so it is
+   * refused rather than stored — which is also what the NOT NULL column says.
+   */
+  @ApiPropertyOptional({ description: 'Public contact address, shown in the footer and on every email' })
+  @IsOptional()
+  @IsEmail({}, { message: 'Enter a valid email address. Shoppers see it in your footer and on every order email.' })
+  @MaxLength(200)
+  email?: string;
+
+  /**
+   * Optional and clearable, unlike the email. `Length` is skipped for the empty
+   * string on purpose: emptying the field is how a shop removes a number it no
+   * longer answers, and a bare `@Length(5, 20)` would reject exactly that.
+   * Five to twenty is the range checkout already applies to a shopper's number.
+   */
+  @ApiPropertyOptional({ description: 'Public contact number. Empty to remove.' })
+  @IsOptional()
+  @ValidateIf((_o, value) => value !== '')
+  @IsString()
+  @Length(5, 20, { message: 'A phone number is between 5 and 20 characters.' })
+  phone?: string;
+
+  @ApiPropertyOptional({ description: 'Trading address. Falls back to this on invoices.' })
+  @IsOptional() @IsString() @MaxLength(200) addressLine1?: string;
+
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) addressLine2?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) city?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(80) state?: string;
+  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(12) postalCode?: string;
 }
 
 /**

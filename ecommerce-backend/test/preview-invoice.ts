@@ -122,7 +122,9 @@ const base = (over: Partial<InvoiceData> = {}): InvoiceData => ({
       meta: 'SKU TWL-004',
       quantity: 3,
       unitPrice: '499.00',
-      discount: '0.00',
+      // One line with a discount on it: the meta line under a product name has
+      // to print it, and only a fixture that carries one will show that.
+      discount: '99.00',
       tax: '269.46',
       lineTotal: '1766.46',
     },
@@ -146,7 +148,7 @@ const cases: [string, InvoiceData][] = [
       brand: {
         primary: '#166534',
         secondary: '#F5A524',
-        logo: samplePng(240, 64, [255, 255, 255]),
+        logo: samplePng(240, 64, [17, 34, 68]),
       },
     }),
   ],
@@ -158,13 +160,54 @@ const cases: [string, InvoiceData][] = [
     '02-pale-brand-no-logo',
     base({
       brand: { primary: '#F5A524', secondary: '#166534', logo: null },
-      seller: { ...base().seller, name: 'Voltway' },
+      seller: {
+        ...base().seller,
+        name: 'Voltway',
+        // A real accounts address rather than a short one. The seller column
+        // used to be wide enough to run this under the dated facts on the
+        // right, so the fixture that shows the fix has to carry a long one.
+        email: 'accounts.receivable@voltway-trading.example',
+        phone: '+91 80 4000 1234',
+      },
     }),
   ],
   [
     // No brand at all: the platform defaults, and an unpaid order.
     '03-unbranded-unpaid',
     base({ brand: undefined, isPaid: false, paymentMethod: 'Cash on delivery' }),
+  ],
+  [
+    /**
+     * Enough lines to run onto a second sheet. What is being looked at is the
+     * continuation: repeated column headings, page numbers in the footer, and
+     * the closing block landing at the foot of the *last* page rather than
+     * being stranded on the first.
+     */
+    '04-long-order',
+    base({
+      brand: { primary: '#1D4ED8', secondary: '#0F766E', logo: null },
+      lines: Array.from({ length: 26 }, (_, i) => ({
+        ...base().lines[i % 3],
+        description: `${base().lines[i % 3].description} (${i + 1})`,
+      })),
+    }),
+  ],
+  [
+    /**
+     * A store with no GSTIN, billing in dollars. Two things to check: the tax
+     * line is the unlabelled "Tax" rather than a GST head, and the amount in
+     * words falls back to the ISO code and a fraction instead of naming paise.
+     */
+    '05-foreign-currency',
+    base({
+      currency: 'USD',
+      brand: { primary: '#7C3AED', secondary: '#DB2777', logo: null },
+      seller: { ...base().seller, gstin: null, pan: null },
+      taxLines: [{ label: 'Tax', amount: '2897.10' }],
+      couponCode: null,
+      discountTotal: '0.00',
+      notes: null,
+    }),
   ],
 ];
 

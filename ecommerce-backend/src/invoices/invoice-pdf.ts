@@ -1,7 +1,12 @@
 import PDFDocument from 'pdfkit';
-import { DEFAULT_BRAND, inkOn, mix, safeHex } from '../common/colour';
+import { DEFAULT_BRAND, mix, readableOn, safeHex } from '../common/colour';
 import { BRAND_DEFAULTS } from '../theme/brand-defaults';
-import type { InvoiceBrand, InvoiceData, InvoiceParty } from './invoice-data';
+import type {
+  InvoiceBrand,
+  InvoiceData,
+  InvoiceLine,
+  InvoiceParty,
+} from './invoice-data';
 
 /**
  * Draws an invoice as a PDF.
@@ -18,31 +23,67 @@ import type { InvoiceBrand, InvoiceData, InvoiceParty } from './invoice-data';
  * database, which is a request-forgery primitive aimed at the inside of our own
  * network. Keeping the fetch out of the renderer is what makes it reviewable.
  *
- * ## Two colours, both the tenant's
+ * ## A light document, and two colours spent sparingly
  *
- * A document set in one hue reads as a template with a colour dropped into it.
- * The primary carries the heading band and the totals rule; the secondary marks
- * the grand total and the accent line under the logo. Ink that sits on either
- * is computed rather than assumed — a shopkeeper may pick a pale yellow, and an
- * invoice whose total cannot be read is not an invoice.
+ * The page is white, the type is ink, and the store's primary and secondary
+ * appear only as *rules, edges and washes* — a two-tone hairline under the
+ * masthead, a bar down the side of each address block, the rule above the grand
+ * total, the plate the total sits on. Never a filled area with type on it.
+ *
+ * This was tried the other way first: a 96pt band of the primary across the
+ * head of the page and another along the foot. It read as heavy and dark, which
+ * is the wrong register for a document somebody files with their accounts. A
+ * letterhead is white; what marks it as somebody's is a logo and a line, not a
+ * slab of colour. The band also fought the logo, which had to sit on a white
+ * plate punched into it, and put two saturated colours immediately adjacent.
+ *
+ * The contrast question moves rather than going away: what a light document
+ * needs is the opposite direction, the store's colour made dark enough to be
+ * read *on paper*. That is `readableOn` from `common/colour`, which is the walk
+ * the email buttons already did — reused rather than re-derived, because a
+ * second contrast calculation is a second threshold that can drift.
+ *
+ * ## What is on the page
+ *
+ * Masthead, seller and invoice facts, the two addresses, the items, the totals
+ * with the amount written out in words, then notes and a signature block that
+ * sit down at the foot of the last sheet. The order is the one an accounts
+ * clerk reads in, and the blocks that exist for compliance — place of supply,
+ * the GST heads, the amount in words — are printed where such a person expects
+ * to find them rather than wherever there happened to be room.
  */
 
 /** A4 at 72dpi, which is what pdfkit's default user space is. */
 const PAGE = { width: 595.28, height: 841.89 };
-const MARGIN = 42;
+const MARGIN = 44;
 const RIGHT = PAGE.width - MARGIN;
-const BOTTOM = PAGE.height - MARGIN - 30;
-
-const INK = '#111827';
-const MUTED = '#6b7280';
-const RULE = '#d1d5db';
-const PANEL = '#f3f4f6';
-
-/** How tall the coloured band across the top of the first page is. */
-const BAND_HEIGHT = 96;
+/** The measure: everything on the page is laid out inside this width. */
+const MEASURE = RIGHT - MARGIN;
 
 /**
- * The store's two colours, defaulted and validated.
+ * Kept clear at the foot of every page for the rule, the legal line and the
+ * page number.
+ *
+ * Reserved rather than hoped for. The footer is stamped after the fact, once
+ * the page count is known, and it will happily print on top of a table row that
+ * ran too far — so no flowing content is allowed below this line.
+ */
+const FOOTER_BAND = 46;
+const BOTTOM = PAGE.height - MARGIN - FOOTER_BAND;
+
+const INK = '#111827';
+/** Small letterspaced captions: darker than body grey so they hold at 7.5pt. */
+const LABEL = '#4b5563';
+const MUTED = '#6b7280';
+/** Section dividers and panel borders. */
+const RULE = '#e5e7eb';
+/** Between table rows, where a full-strength rule would look like a grid. */
+const HAIRLINE = '#f0f1f3';
+/** A neutral fill, for the one panel that must not be branded. */
+const PANEL = '#f4f5f7';
+
+/**
+ * The store's two colours, defaulted, validated and derived from.
  *
  * A stored value never passed through the API's validation — a seed, a
  * migration, a hand edit — so it is checked here rather than trusted, exactly
@@ -51,32 +92,58 @@ const BAND_HEIGHT = 96;
 interface Palette {
   primary: string;
   secondary: string;
-  onPrimary: string;
+  /**
+   * The primary darkened until it reads as type on white.
+   *
+   * A shopkeeper may pick a pale yellow, and `PAID` set in it would be a
+   * rumour. `readableOn` steps the lightness down until the contrast clears
+   * 4.5:1 and gives up to ink if it cannot. It is measured against the tint
+   * rather than against the paper, because that is the darker of the two
+   * grounds this colour is ever set on — clear it and white is clear too.
+   */
+  strong: string;
+  /** A barely-there tint, for plates and the table head. */
   wash: string;
+  /** A stronger tint, for the one small badge that has to be noticed. */
+  tint: string;
 }
 
 function paletteOf(brand?: InvoiceBrand): Palette {
   const primary = safeHex(brand?.primary ?? DEFAULT_BRAND);
   const secondary = safeHex(brand?.secondary ?? BRAND_DEFAULTS.SECONDARY);
 
+  const tint = mix('#FFFFFF', primary, 0.12);
+
   return {
     primary,
     secondary,
-    // White on a forest green, near-black on a pale yellow — decided, not assumed.
-    onPrimary: inkOn(primary),
-    /** A barely-there tint of the primary, for the panel behind the totals. */
-    wash: mix('#FFFFFF', primary, 0.06),
+    strong: readableOn(primary, tint),
+    wash: mix('#FFFFFF', primary, 0.05),
+    tint,
   };
 }
 
-const COLUMNS = {
-  index: { x: MARGIN, width: 22 },
-  description: { x: MARGIN + 24, width: 210 },
-  quantity: { x: MARGIN + 240, width: 34 },
-  rate: { x: MARGIN + 278, width: 74 },
-  tax: { x: MARGIN + 356, width: 64 },
-  amount: { x: MARGIN + 424, width: RIGHT - (MARGIN + 424) },
-};
+/**
+ * The items table, measured from the right.
+ *
+ * The money columns get the width they need for the longest figure they will
+ * ever hold and the description takes what is left, rather than the other way
+ * round: a wrapped product name costs one more line, a wrapped total is a
+ * misread number.
+ */
+const COLUMNS = (() => {
+  const gutter = 10;
+  const amount = { x: RIGHT - 84, width: 84 };
+  const tax = { x: amount.x - gutter - 66, width: 66 };
+  const rate = { x: tax.x - gutter - 72, width: 72 };
+  const quantity = { x: rate.x - gutter - 32, width: 32 };
+  const index = { x: MARGIN, width: 18 };
+  const description = {
+    x: index.x + index.width + gutter,
+    width: quantity.x - gutter - (index.x + index.width + gutter),
+  };
+  return { index, description, quantity, rate, tax, amount };
+})();
 
 export function renderInvoicePdf(data: InvoiceData): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -110,206 +177,264 @@ export function renderInvoicePdf(data: InvoiceData): Promise<Buffer> {
 type Doc = PDFKit.PDFDocument;
 
 function draw(doc: Doc, data: InvoiceData): void {
+  const palette = paletteOf(data.brand);
   const money = (value: string) => formatMoney(value, data.currency);
 
-  header(doc, data);
-  parties(doc, data);
-  const startY = doc.y + 8;
-  const endY = table(doc, data, money, startY);
-  totals(doc, data, money, endY);
-  footer(doc, data);
+  masthead(doc, data, palette);
+  details(doc, data);
+  parties(doc, data, palette);
+  const tableEnd = table(doc, data, palette, money);
+  summary(doc, data, palette, money, tableEnd);
+  closing(doc, data, palette);
+  footer(doc, data, palette);
 }
 
 // --- Sections ----------------------------------------------------------------
 
-function header(doc: Doc, data: InvoiceData): void {
-  const palette = paletteOf(data.brand);
+/**
+ * The store's mark on white, the document's name opposite it, and the two-tone
+ * rule that closes the block.
+ *
+ * No band. A filled header in the tenant's colour was the first attempt and it
+ * read as dark and heavy — see the note at the top of this file. What identifies
+ * the page instead is the logo itself, at its own size and in its own colours,
+ * which is what a letterhead does.
+ */
+function masthead(doc: Doc, data: InvoiceData, palette: Palette): void {
+  const top = MARGIN;
+  const logoBox: [number, number] = [156, 40];
+  let logoDrawn = false;
 
-  /**
-   * A full-bleed band in the store's primary.
-   *
-   * Drawn to the page edges rather than inset, because an inset panel reads as
-   * a box someone put on a page and a bleed reads as stationery. It is the one
-   * large area of colour in the document; everything below it is ink on paper.
-   */
-  doc.rect(0, 0, PAGE.width, BAND_HEIGHT).fill(palette.primary);
-
-  // The secondary, as a hairline under the band. Two colours meeting is what
-  // stops the band looking like a single flat slab.
-  doc.rect(0, BAND_HEIGHT, PAGE.width, 3).fill(palette.secondary);
-
-  const bandText = palette.onPrimary;
-  let nameTop = MARGIN - 8;
-
-  /**
-   * The mark, when the store has one that could be loaded.
-   *
-   * Sized by height and left to find its own width, because the aspect ratio is
-   * the shopkeeper's and asserting one would squash a square logo or stretch a
-   * wide one. `fit` bounds both sides so a very wide mark cannot run under the
-   * invoice title on the right.
-   */
   if (data.brand?.logo) {
     try {
-      doc.image(data.brand.logo, MARGIN, MARGIN - 10, { fit: [170, 44] });
-      nameTop = MARGIN + 40;
+      /**
+       * Sized by height and left to find its own width: the aspect ratio is the
+       * shopkeeper's, and asserting one would squash a square mark or stretch a
+       * wide one. `fit` bounds both sides so a very wide logo cannot run under
+       * the title on the right.
+       *
+       * On white, so a dark logo — which most are — is legible. That is the
+       * other half of why the band went.
+       */
+      doc.image(data.brand.logo, MARGIN, top, { fit: logoBox });
+      logoDrawn = true;
     } catch {
       // Bad bytes that got past the type check. The name below is the fallback,
       // and an invoice must not fail over a logo.
-      nameTop = MARGIN - 8;
+      logoDrawn = false;
     }
   }
 
-  doc.fillColor(bandText).font('Helvetica-Bold').fontSize(data.brand?.logo ? 11 : 17);
-  doc.text(data.seller.name, MARGIN, nameTop, { width: 300 });
+  /**
+   * The store's name: a small caption under the mark, or the wordmark itself
+   * when there is none.
+   *
+   * The caption clears the whole `fit` box rather than the image — pdfkit does
+   * not report the height it actually drew, and guessing low would print the
+   * name through the bottom of a tall logo. A short logo buys a few points of
+   * air instead, which is the harmless direction to be wrong in.
+   */
+  if (logoDrawn) {
+    doc.font('Helvetica-Bold').fontSize(8.5).fillColor(LABEL);
+    doc.text(data.seller.name, MARGIN, top + logoBox[1] + 8, {
+      width: 250,
+      characterSpacing: 0.3,
+    });
+  } else {
+    doc.font('Helvetica-Bold').fontSize(17).fillColor(INK);
+    doc.text(data.seller.name, MARGIN, top + 2, { width: 262 });
+  }
+  const leftBottom = doc.y;
 
   /**
-   * The title, on the band and opposite the mark.
+   * The title, in ink rather than on colour.
    *
    * "TAX INVOICE" only when the order is paid: an unpaid one is a request for
    * money, and calling it a tax invoice would be a false statement on a
    * document somebody files.
    */
-  doc.fillColor(bandText).font('Helvetica-Bold').fontSize(20);
-  doc.text(data.isPaid ? 'TAX INVOICE' : 'INVOICE', RIGHT - 240, MARGIN - 6, {
-    width: 240,
+  const titleWidth = 250;
+  const titleX = RIGHT - titleWidth;
+
+  doc.fillColor(INK).font('Helvetica-Bold').fontSize(18);
+  doc.text(data.isPaid ? 'TAX INVOICE' : 'INVOICE', titleX, top, {
+    width: titleWidth,
     align: 'right',
-    characterSpacing: 1.2,
+    characterSpacing: 1.6,
   });
 
-  doc.font('Helvetica').fontSize(9).fillColor(bandText);
-  doc.text(
-    data.isPaid ? data.invoiceNumber : `${data.invoiceNumber} · payment pending`,
-    RIGHT - 240,
-    doc.y + 2,
-    { width: 240, align: 'right' },
+  // The number, set once and set clearly. It is the string every other system
+  // quotes back — a support email, a bank narration, an accountant's query.
+  doc.font('Helvetica').fontSize(10).fillColor(MUTED);
+  doc.text(data.invoiceNumber, titleX, doc.y + 5, {
+    width: titleWidth,
+    align: 'right',
+  });
+
+  /**
+   * Whether the money arrived, as a badge rather than as a sentence.
+   *
+   * Paid wears the store's own colour, darkened until it can be read; unpaid
+   * wears neutral grey on purpose. An unpaid invoice badged in a cheerful brand
+   * tint reads as a receipt at a glance, and a glance is all most people give it.
+   */
+  const badgeBottom = badge(
+    doc,
+    data.isPaid ? 'PAID' : 'PAYMENT DUE',
+    data.isPaid ? palette.strong : INK,
+    data.isPaid ? palette.tint : PANEL,
+    RIGHT,
+    doc.y + 9,
   );
 
-  // Below the band: the seller's details in ink, where they are readable
-  // whatever colour the band happens to be.
-  let y = BAND_HEIGHT + 22;
+  /**
+   * The one place both colours appear together: a 2pt rule across the measure,
+   * mostly primary with a short secondary tail.
+   *
+   * Two colours meeting in a line is enough to read as deliberate. Two colours
+   * meeting as adjacent filled bands, which is what this replaced, reads as a
+   * flag.
+   */
+  const ruleY = Math.max(leftBottom, badgeBottom) + 16;
+  const tail = 72;
+  doc.rect(MARGIN, ruleY, MEASURE - tail, 2).fill(palette.primary);
+  doc.rect(RIGHT - tail, ruleY, tail, 2).fill(palette.secondary);
 
-  doc.font('Helvetica').fontSize(9).fillColor(MUTED);
-  for (const line of data.seller.lines) {
-    doc.text(line, MARGIN, y, { width: 300 });
-    y = doc.y;
-  }
+  doc.y = ruleY + 18;
+}
+
+/**
+ * Who issued it, and the facts that date it.
+ *
+ * The invoice number is not repeated here, even though a meta table is where an
+ * eye trained on other invoices looks for it: it is already set under the title,
+ * and the same string twice within 60pt reads as a template that lost track of
+ * itself.
+ */
+function details(doc: Doc, data: InvoiceData): void {
+  const top = doc.y;
+
+  const valueWidth = 132;
+  const labelWidth = 104;
+  const labelX = RIGHT - valueWidth - labelWidth;
+
+  /**
+   * The seller column stops short of where the dated facts begin.
+   *
+   * It used to be a flat 290pt starting at the margin, which ends 19pt *past*
+   * the first pixel of the right-hand labels. Nothing collided while the only
+   * thing on that line was `hello@shop.example`, and a store that put its real
+   * accounts address there — the long one, with the department in it — printed
+   * an invoice with its email running under "Invoice date".
+   */
+  const sellerWidth = labelX - MARGIN - 20;
 
   const identity = [
     data.seller.gstin ? `GSTIN ${data.seller.gstin}` : null,
     data.seller.pan ? `PAN ${data.seller.pan}` : null,
   ].filter(Boolean) as string[];
 
-  if (identity.length > 0) {
-    doc.fillColor(INK).font('Helvetica-Bold').fontSize(9);
-    doc.text(identity.join('   ·   '), MARGIN, y + 4, { width: 300 });
-    y = doc.y;
-  }
+  const runs: Run[] = [
+    ...data.seller.lines.map((line) => body(line)),
+    ...(identity.length > 0
+      ? [{ text: identity.join('   ·   '), font: BOLD, size: 9, color: INK, gap: 5 }]
+      : []),
+    ...contactRuns(doc, data.seller, sellerWidth),
+  ];
 
-  const contact = [data.seller.email, data.seller.phone].filter(Boolean) as string[];
-  if (contact.length > 0) {
-    doc.font('Helvetica').fontSize(9).fillColor(MUTED);
-    doc.text(contact.join('   ·   '), MARGIN, y, { width: 300 });
-  }
+  const sellerBottom = drawRuns(doc, runs, MARGIN, top, sellerWidth);
 
-  const sellerBottom = doc.y;
-
-  // The dated facts, right-aligned against the seller block.
+  /**
+   * The dated facts, right-aligned against the seller block.
+   *
+   * Place of supply sits here rather than with the delivery address because it
+   * is the field that decides whether the tax below is one head or two, and it
+   * is read next to the dates. Printed only for a registered store: for anyone
+   * else it is a term with no meaning on their invoice.
+   */
   const rows: [string, string][] = [
-    ['Invoice no.', data.invoiceNumber],
     ['Invoice date', formatDate(data.issuedAt)],
     ['Order no.', data.orderNumber],
     ['Order date', formatDate(data.placedAt)],
   ];
   if (data.paymentMethod) rows.push(['Payment', data.paymentMethod]);
+  if (data.seller.gstin && data.shipTo.state) {
+    rows.push(['Place of supply', data.shipTo.state]);
+  }
 
-  let rowY = BAND_HEIGHT + 22;
+  let rowY = top;
   for (const [label, value] of rows) {
     doc.font('Helvetica').fontSize(9).fillColor(MUTED);
-    doc.text(label, RIGHT - 240, rowY, { width: 110, align: 'right' });
+    doc.text(label, labelX, rowY, { width: labelWidth, align: 'right' });
     doc.font('Helvetica-Bold').fontSize(9).fillColor(INK);
-    doc.text(value, RIGHT - 125, rowY, { width: 125, align: 'right' });
-    rowY = doc.y;
+    doc.text(value, RIGHT - valueWidth, rowY, { width: valueWidth, align: 'right' });
+    rowY = doc.y + 2;
   }
 
-  const bottom = Math.max(rowY, sellerBottom) + 14;
+  const bottom = Math.max(rowY, sellerBottom) + 16;
   doc.strokeColor(RULE).lineWidth(1);
   doc.moveTo(MARGIN, bottom).lineTo(RIGHT, bottom).stroke();
-  doc.y = bottom + 16;
+  doc.y = bottom + 18;
 }
 
-function parties(doc: Doc, data: InvoiceData): void {
+/**
+ * The two addresses, side by side on tinted plates.
+ *
+ * Plated rather than left loose on the paper because this is the only place on
+ * the sheet where the same name can appear twice for two different reasons, and
+ * a reader has to see at a glance that they are two answers and not one
+ * paragraph. The primary marks who is billed and the secondary who receives —
+ * the same two colours doing the same job they do in the rule above and the
+ * total below.
+ */
+function parties(doc: Doc, data: InvoiceData, palette: Palette): void {
+  const gap = 18;
+  const width = (MEASURE - gap) / 2;
+  const padding = 14;
+  const inner = width - padding - 12;
+
+  const billed = partyRuns('Billed to', data.billTo);
+  const delivered = partyRuns('Delivered to', data.shipTo);
+
+  const height =
+    Math.max(runsHeight(doc, billed, inner), runsHeight(doc, delivered, inner)) +
+    padding * 2;
+
   const top = doc.y;
-  const width = (RIGHT - MARGIN - 24) / 2;
+  const rightX = MARGIN + width + gap;
 
-  /**
-   * Each column's own bottom, captured as it is drawn.
-   *
-   * This used to read `Math.max(doc.y, top)`, which compares the *second*
-   * column's bottom against the block's start — the start always loses, so the
-   * result was "below whichever was drawn last" no matter what the comment
-   * claimed. The billing column is the taller of the two whenever a customer
-   * has an email and a phone number on file, and the items table was drawn
-   * straight through the bottom of it.
-   */
-  party(doc, 'Billed to', data.billTo, MARGIN, top, width);
-  const billBottom = doc.y;
+  plate(doc, MARGIN, top, width, height, palette.wash, palette.primary);
+  plate(doc, rightX, top, width, height, palette.wash, palette.secondary);
 
-  party(doc, 'Delivered to', data.shipTo, MARGIN + width + 24, top, width);
-  const shipBottom = doc.y;
+  drawRuns(doc, billed, MARGIN + padding, top + padding, inner);
+  drawRuns(doc, delivered, rightX + padding, top + padding, inner);
 
-  doc.y = Math.max(billBottom, shipBottom) + 20;
-}
-
-function party(
-  doc: Doc,
-  heading: string,
-  value: InvoiceParty,
-  x: number,
-  y: number,
-  width: number,
-): void {
-  doc.font('Helvetica-Bold').fontSize(8).fillColor(MUTED);
-  doc.text(heading.toUpperCase(), x, y, { width, characterSpacing: 0.6 });
-
-  doc.font('Helvetica-Bold').fontSize(10).fillColor(INK);
-  doc.text(value.name, x, doc.y + 3, { width });
-
-  doc.font('Helvetica').fontSize(9).fillColor(MUTED);
-  for (const line of value.lines) {
-    doc.text(line, x, doc.y, { width });
-  }
-
-  const extra = [
-    value.gstin ? `GSTIN ${value.gstin}` : null,
-    value.email,
-    value.phone,
-  ].filter(Boolean) as string[];
-
-  for (const line of extra) {
-    doc.text(line, x, doc.y, { width });
-  }
+  doc.y = top + height + 18;
 }
 
 /** Returns the y the table finished at. */
 function table(
   doc: Doc,
   data: InvoiceData,
+  palette: Palette,
   money: (value: string) => string,
-  startY: number,
 ): number {
-  const palette = paletteOf(data.brand);
-
-  let y = startY;
-  y = tableHead(doc, y, palette);
+  let y = tableHead(doc, doc.y, palette);
 
   data.lines.forEach((line, index) => {
-    const metaHeight = line.meta ? 11 : 0;
+    const meta = lineMeta(line, money);
+
     const nameHeight = doc
       .font('Helvetica')
       .fontSize(9)
       .heightOfString(line.description, { width: COLUMNS.description.width });
-    const height = Math.max(nameHeight + metaHeight, 14) + 10;
+    const metaHeight = meta
+      ? doc
+          .font('Helvetica')
+          .fontSize(7.5)
+          .heightOfString(meta, { width: COLUMNS.description.width })
+      : 0;
+    const height = Math.max(nameHeight + metaHeight, 16) + 12;
 
     // A new page keeps the column headings, so a second sheet is readable on
     // its own rather than being a list of numbers under nothing.
@@ -325,9 +450,10 @@ function table(
     doc.text(line.description, COLUMNS.description.x, y, {
       width: COLUMNS.description.width,
     });
-    if (line.meta) {
-      doc.fontSize(8).fillColor(MUTED);
-      doc.text(line.meta, COLUMNS.description.x, doc.y, {
+
+    if (meta) {
+      doc.fontSize(7.5).fillColor(MUTED);
+      doc.text(meta, COLUMNS.description.x, doc.y + 1, {
         width: COLUMNS.description.width,
       });
       doc.fontSize(9);
@@ -341,44 +467,58 @@ function table(
     right(doc, money(line.lineTotal), COLUMNS.amount, y);
 
     y += height;
-    doc.strokeColor('#eceef1').lineWidth(0.5);
-    doc.moveTo(MARGIN, y - 5).lineTo(RIGHT, y - 5).stroke();
+    // A hairline, not a rule: at full strength one of these between every row
+    // turns the block into a grid, and a grid is a spreadsheet.
+    doc.strokeColor(HAIRLINE).lineWidth(0.5);
+    doc.moveTo(MARGIN, y - 6).lineTo(RIGHT, y - 6).stroke();
   });
 
   return y;
 }
 
 function tableHead(doc: Doc, y: number, palette: Palette): number {
-  // The store's colour at 6%, not a neutral grey: the column headings should
-  // belong to the same document as the band above them.
-  doc.rect(MARGIN, y, RIGHT - MARGIN, 20).fill(palette.wash);
+  // The store's colour at 5%, not a neutral grey: the column headings should
+  // belong to the same document as the rule above them.
+  doc.rect(MARGIN, y, MEASURE, 22).fill(palette.wash);
   // A hairline of the primary under the headings, so the table has a top edge
   // that is the brand rather than another grey.
-  doc.rect(MARGIN, y + 20, RIGHT - MARGIN, 1).fill(palette.primary);
-  doc.fillColor(MUTED).font('Helvetica-Bold').fontSize(8);
+  doc.rect(MARGIN, y + 22, MEASURE, 1).fill(palette.primary);
 
-  const textY = y + 6;
-  doc.text('#', COLUMNS.index.x + 4, textY, { width: COLUMNS.index.width });
+  doc.fillColor(LABEL).font('Helvetica-Bold').fontSize(7.5);
+
+  const textY = y + 7.5;
+  const spaced = { characterSpacing: 0.7 };
+  doc.text('#', COLUMNS.index.x, textY, { width: COLUMNS.index.width, ...spaced });
   doc.text('DESCRIPTION', COLUMNS.description.x, textY, {
     width: COLUMNS.description.width,
+    ...spaced,
   });
-  right(doc, 'QTY', COLUMNS.quantity, textY);
-  right(doc, 'RATE', COLUMNS.rate, textY);
-  right(doc, 'TAX', COLUMNS.tax, textY);
-  right(doc, 'AMOUNT', COLUMNS.amount, textY);
+  right(doc, 'QTY', COLUMNS.quantity, textY, spaced);
+  right(doc, 'RATE', COLUMNS.rate, textY, spaced);
+  right(doc, 'TAX', COLUMNS.tax, textY, spaced);
+  right(doc, 'AMOUNT', COLUMNS.amount, textY, spaced);
 
-  return y + 28;
+  return y + 34;
 }
 
-function totals(
+/**
+ * What is owed, in figures and in words, and what is left to pay.
+ *
+ * The words are not decoration. An amount in words is the convention that makes
+ * a total hard to alter after the fact, it is expected on an Indian invoice, and
+ * it fills the half of the page a totals stack leaves empty — which is the hole
+ * that made every earlier draft of this sheet look unfinished.
+ */
+function summary(
   doc: Doc,
   data: InvoiceData,
+  palette: Palette,
   money: (value: string) => string,
-  startY: number,
+  tableEnd: number,
 ): void {
-  const width = 230;
+  const width = 226;
   const x = RIGHT - width;
-  let y = startY + 6;
+  const labelWidth = width - 116;
 
   const rows: [string, string][] = [['Subtotal', money(data.subtotal)]];
 
@@ -399,21 +539,46 @@ function totals(
     Number(data.shippingTotal) === 0 ? 'Free' : money(data.shippingTotal),
   ]);
 
+  /**
+   * The note that sits under the balance: what settles it, and who to ask.
+   *
+   * Measured here rather than at the point it is drawn, because it is part of
+   * the settlement block and has to be counted in `needed` below. A page break
+   * that took the figure and left the instruction behind would put "Balance due
+   * Rs. 4,200.00" at the foot of one sheet and "Payable by..." at the head of
+   * the next, which is the one arrangement worse than not printing it at all.
+   */
+  const noteWidth = width - 28;
+  const settlementNote = settlementRuns(doc, data, noteWidth);
+  const settlementHeight = 46 + runsHeight(doc, settlementNote, noteWidth) + 10;
+
+  const plateHeight = 36;
+  const needed = rows.length * 15 + 12 + plateHeight + settlementHeight;
+
   // Nine rows of totals will not fit under a table that ended near the foot.
-  if (y + rows.length * 15 + 46 > BOTTOM) {
+  let y = tableEnd + 12;
+  if (y + needed > BOTTOM) {
     doc.addPage();
     y = MARGIN;
   }
 
-  for (const [label, value] of rows) {
-    doc.font('Helvetica').fontSize(9).fillColor(MUTED);
-    doc.text(label, x, y, { width: width - 110 });
-    doc.fillColor(INK);
-    doc.text(value, x + width - 110, y, { width: 110, align: 'right' });
-    y += 15;
+  // --- The words, on the left ---
+  const words = amountInWords(data.grandTotal, data.currency);
+  if (words) {
+    doc.font('Helvetica-Bold').fontSize(7.5).fillColor(LABEL);
+    doc.text('AMOUNT IN WORDS', MARGIN, y, { characterSpacing: 0.8 });
+    doc.font('Helvetica-Oblique').fontSize(9).fillColor(INK);
+    doc.text(words, MARGIN, doc.y + 4, { width: x - MARGIN - 28 });
   }
 
-  const palette = paletteOf(data.brand);
+  // --- The figures, on the right ---
+  for (const [label, value] of rows) {
+    doc.font('Helvetica').fontSize(9).fillColor(MUTED);
+    doc.text(label, x, y, { width: labelWidth });
+    doc.fillColor(INK);
+    doc.text(value, x + labelWidth, y, { width: 116, align: 'right' });
+    y += 15;
+  }
 
   y += 4;
   // Ruled in the primary rather than in grey: this is the line that separates
@@ -430,63 +595,429 @@ function totals(
    * secondary — the two colours meeting again at the bottom of the page as they
    * did at the top, which is what makes the sheet read as one piece.
    */
-  const plateHeight = 30;
-  doc.rect(x, y - 6, width, plateHeight).fill(palette.wash);
-  doc.rect(x, y - 6, 3, plateHeight).fill(palette.secondary);
+  plate(doc, x, y, width, plateHeight, palette.wash, palette.secondary);
 
   doc.font('Helvetica-Bold').fontSize(11).fillColor(INK);
-  doc.text('Total', x + 12, y + 2, { width: width - 122 });
-  doc.text(money(data.grandTotal), x + width - 122, y + 2, { width: 110, align: 'right' });
+  doc.text('Total', x + 14, y + 13, { width: labelWidth });
+  doc.fontSize(12.5);
+  doc.text(money(data.grandTotal), x + labelWidth, y + 11, {
+    width: 104,
+    align: 'right',
+  });
+  y += plateHeight + 12;
 
-  doc.y = y + plateHeight + 16;
+  /**
+   * Settlement: what has been paid, and what is still owed.
+   *
+   * Taken from `isPaid` rather than from a payments ledger, because that is the
+   * only fact the order carries — it is paid or it is not, and there is no
+   * partial state to represent. Printing the pair even when the balance is nil
+   * is the point: "Balance due Rs. 0.00" is what a buyer looks for on a receipt,
+   * and its absence is what makes people ring up to ask.
+   */
+  const paid = data.isPaid ? data.grandTotal : '0.00';
+  const balance = data.isPaid ? '0.00' : data.grandTotal;
+
+  doc.font('Helvetica').fontSize(9).fillColor(MUTED);
+  doc.text('Amount paid', x + 14, y, { width: labelWidth });
+  doc.fillColor(INK);
+  doc.text(money(paid), x + labelWidth, y, { width: 104, align: 'right' });
+  y += 16;
+
+  doc.strokeColor(RULE).lineWidth(0.5);
+  doc.moveTo(x + 14, y - 4).lineTo(RIGHT, y - 4).stroke();
+
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK);
+  doc.text('Balance due', x + 14, y + 3, { width: labelWidth });
+  doc.text(money(balance), x + labelWidth, y + 3, { width: 104, align: 'right' });
+
+  // Past the bottom of the balance row, not past its top: the row is drawn at
+  // an explicit y, so whatever comes next has only this number to tell it where
+  // the block actually ended.
+  y += 20;
+
+  doc.y = drawRuns(doc, settlementNote, x + 14, y, noteWidth) + 4;
 }
 
-function footer(doc: Doc, data: InvoiceData): void {
-  if (data.notes) {
-    if (doc.y + 60 > BOTTOM) doc.addPage();
-    doc.font('Helvetica-Bold').fontSize(8).fillColor(MUTED);
-    doc.text('NOTES', MARGIN, doc.y, { characterSpacing: 0.6 });
-    doc.font('Helvetica').fontSize(9).fillColor(INK);
-    doc.text(data.notes, MARGIN, doc.y + 3, { width: 330 });
+/**
+ * What to do about the figure above, printed under it.
+ *
+ * Two lines at most. The first says how the balance stands — settled by
+ * whichever method the order carries, or still payable by it — and the second
+ * gives the shop's billing address and number, which is the pair a buyer needs
+ * when they want to query the amount or tell somebody they have paid it.
+ *
+ * Those two details are already on the letterhead. They are repeated here on
+ * purpose, for two reasons: a long order pushes the totals onto a second sheet
+ * that carries no letterhead at all, and an accounts department that queries an
+ * invoice reads from the number outward rather than from the top of the page
+ * down. The values are `seller.email` and `seller.phone`, so a shop that has set
+ * a separate billing address in Settings gets *that* one here — the invoice
+ * asks people to write where invoices are actually read.
+ *
+ * A store with neither on file prints the first line alone rather than a
+ * dangling "Queries:" with nothing after it.
+ */
+function settlementRuns(doc: Doc, data: InvoiceData, width: number): Run[] {
+  const { standing, reach } = settlementNote(data);
+
+  const note = (text: string, gap: number): Run => ({
+    text,
+    font: 'Helvetica',
+    size: 7.5,
+    color: MUTED,
+    gap,
+  });
+
+  const runs: Run[] = [note(standing, 8)];
+  if (reach.length === 0) return runs;
+
+  /**
+   * Joined on one line while it fits, split when it does not — the same rule
+   * `contactRuns` follows for the letterhead, and for the same reason: the
+   * separator is the only break opportunity in the string, so pdfkit wrapping
+   * it strands the number on its own line anyway.
+   */
+  const label = 'Queries: ';
+  const joined = label + reach.join('   ·   ');
+  doc.font('Helvetica').fontSize(7.5);
+
+  if (reach.length === 1 || doc.widthOfString(joined) <= width) {
+    runs.push(note(joined, 2));
+  } else {
+    runs.push(note(label + reach[0], 2), note(reach[1], 1));
+  }
+
+  return runs;
+}
+
+/**
+ * The wording, separated from the layout so it can be read as text in a test.
+ *
+ * What the note says is the part that has to be *true* — an invoice that tells
+ * a buyer to pay an amount already collected, or that names a payment method
+ * the order never used, is a document the shop has to apologise for. How it
+ * wraps is a typographic detail and stays in `settlementRuns`.
+ */
+export function settlementNote(data: InvoiceData): { standing: string; reach: string[] } {
+  const method = data.paymentMethod?.trim();
+
+  return {
+    standing: data.isPaid
+      ? `Received in full${method ? ` by ${method}` : ''}. Nothing further is due.`
+      : `Payable${method ? ` by ${method}` : ''}. Please quote ${data.invoiceNumber}.`,
+    reach: [data.seller.email, data.seller.phone]
+      .map((value) => value?.trim())
+      .filter((value): value is string => Boolean(value)),
+  };
+}
+
+/**
+ * Notes and the signature block, sitting at the foot of the last sheet.
+ *
+ * Anchored down rather than allowed to follow the totals. A three-line order
+ * finishes barely halfway down an A4 page, and a document whose content stops in
+ * mid-air with 300pt of white under it looks like a form somebody abandoned.
+ * Pushed to the bottom, the same content reads as the close of a letter.
+ */
+function closing(doc: Doc, data: InvoiceData, palette: Palette): void {
+  const gap = 24;
+  const notesWidth = Math.round(MEASURE * 0.56);
+  const signWidth = MEASURE - notesWidth - gap;
+  const padding = 13;
+
+  const notes = data.notes?.trim();
+  const notesRuns: Run[] = notes
+    ? [
+        { text: 'NOTES', font: BOLD, size: 7.5, color: LABEL, gap: 0, spacing: 0.8 },
+        { text: notes, font: 'Helvetica', size: 9, color: INK, gap: 5 },
+      ]
+    : [];
+
+  const notesHeight = notes
+    ? runsHeight(doc, notesRuns, notesWidth - padding * 2) + padding * 2
+    : 0;
+
+  /**
+   * The signature block is measured rather than assumed, because the tallest
+   * thing in it is the store's own name and "Northwind Trading Company Private
+   * Limited" is two lines where "Voltway" is one.
+   *
+   * The room left to sign in is then squeezed to fit whatever the page has
+   * left. A signature is worth 28pt of air and will make do with 14, and
+   * neither is worth spilling a three-line invoice onto a second sheet for.
+   */
+  doc.font('Helvetica').fontSize(8.5);
+  const forHeight = doc.heightOfString('For', { width: signWidth });
+  doc.font(BOLD).fontSize(9.5);
+  const nameHeight = doc.heightOfString(data.seller.name, { width: signWidth });
+
+  const ruledCaption = 16;
+  const available = BOTTOM - (doc.y + 10);
+  const air = Math.max(
+    14,
+    Math.min(28, available - forHeight - nameHeight - ruledCaption),
+  );
+  const signHeight = forHeight + nameHeight + air + ruledCaption;
+  const height = Math.max(notesHeight, signHeight);
+
+  let top = doc.y + 10;
+  if (top + height > BOTTOM) {
+    doc.addPage();
+    top = MARGIN;
+  } else {
+    top = Math.max(top, BOTTOM - height);
+  }
+
+  if (notes) {
+    // The one neutral panel on the sheet. Notes carry bank details more often
+    // than they carry anything else, and a tenant tint behind an account number
+    // helps nobody read it.
+    doc.rect(MARGIN, top, notesWidth, notesHeight).fill(PANEL);
+    doc.strokeColor(RULE).lineWidth(0.5);
+    doc.rect(MARGIN, top, notesWidth, notesHeight).stroke();
+    drawRuns(doc, notesRuns, MARGIN + padding, top + padding, notesWidth - padding * 2);
   }
 
   /**
-   * Stamped on every page at the end, once the page count is known. Written
-   * during the draw it would land only on the page the cursor happened to be
-   * on, and a two-page invoice would have an unnumbered sheet.
+   * The signature block.
+   *
+   * Left blank on purpose: the file is generated and nobody signs it, but a shop
+   * that prints a copy to hand across a counter needs somewhere to put a stamp,
+   * and a buyer's accounts department expects the line to exist. The footer says
+   * the document is valid without one, so the two do not contradict each other.
    */
+  const signX = RIGHT - signWidth;
+  const signBottom = top + height;
+
+  doc.font('Helvetica').fontSize(8.5).fillColor(MUTED);
+  doc.text('For', signX, signBottom - signHeight, { width: signWidth, align: 'right' });
+  doc.font('Helvetica-Bold').fontSize(9.5).fillColor(INK);
+  doc.text(data.seller.name, signX, doc.y + 1, { width: signWidth, align: 'right' });
+
+  doc.strokeColor(palette.primary).lineWidth(1);
+  doc
+    .moveTo(signX + Math.max(0, signWidth - 150), signBottom - 15)
+    .lineTo(RIGHT, signBottom - 15)
+    .stroke();
+
+  doc.font('Helvetica').fontSize(8).fillColor(MUTED);
+  doc.text('Authorised signatory', signX, signBottom - 11, {
+    width: signWidth,
+    align: 'right',
+    characterSpacing: 0.3,
+  });
+
+  doc.y = signBottom;
+}
+
+/**
+ * Stamped on every page at the end, once the page count is known. Written during
+ * the draw it would land only on the page the cursor happened to be on, and a
+ * two-page invoice would have an unnumbered sheet.
+ */
+function footer(doc: Doc, data: InvoiceData, palette: Palette): void {
   const range = doc.bufferedPageRange();
+  const y = PAGE.height - MARGIN - 28;
+  const tail = 72;
+
   for (let i = range.start; i < range.start + range.count; i += 1) {
     doc.switchToPage(i);
-    // A thin rule of the store's colour along the foot of every page, so a
-    // second sheet is recognisably part of the same document.
-    doc.rect(0, PAGE.height - 4, PAGE.width, 4).fill(paletteOf(data.brand).primary);
 
-    doc.font('Helvetica').fontSize(8).fillColor(MUTED);
+    /**
+     * A hairline inside the margin rather than a bar bled to the paper edge, and
+     * two-tone like the one under the masthead.
+     *
+     * The full-width version was the second dark slab on the page — head and
+     * foot — and between them the document read as boxed in. A 1pt rule at the
+     * measure still marks a second sheet as part of the same document, which is
+     * all it was ever for.
+     */
+    doc.rect(MARGIN, y, MEASURE - tail, 1).fill(palette.primary);
+    doc.rect(RIGHT - tail, y, tail, 1).fill(palette.secondary);
+
+    doc.font('Helvetica').fontSize(7.5).fillColor(MUTED);
     doc.text(
-      `${data.invoiceNumber}   ·   Computer generated; no signature required` +
+      `${data.invoiceNumber}   ·   Computer generated invoice; valid without a signature` +
         (range.count > 1 ? `   ·   Page ${i - range.start + 1} of ${range.count}` : ''),
       MARGIN,
-      PAGE.height - MARGIN - 12,
-      { width: RIGHT - MARGIN, align: 'center' },
+      y + 12,
+      { width: MEASURE, align: 'center', characterSpacing: 0.2 },
     );
   }
 }
 
-// --- Helpers -----------------------------------------------------------------
+// --- Text blocks -------------------------------------------------------------
 
-function rule(doc: Doc, y: number): void {
-  doc.strokeColor(RULE).lineWidth(1);
-  doc.moveTo(MARGIN, y).lineTo(RIGHT, y).stroke();
+const BOLD = 'Helvetica-Bold';
+
+/**
+ * One line of a stacked text block.
+ *
+ * Blocks are described before they are drawn because the plate behind them has
+ * to be filled *first* — a rectangle painted after the type would bury it — and
+ * its height is not known until the type has been measured. One description,
+ * measured by `runsHeight` and drawn by `drawRuns`, keeps the two passes from
+ * disagreeing about what is in the block.
+ */
+interface Run {
+  text: string;
+  font: string;
+  size: number;
+  color: string;
+  /** Air above this line. */
+  gap: number;
+  spacing?: number;
 }
+
+function body(text: string, gap = 1): Run {
+  return { text, font: 'Helvetica', size: 9, color: MUTED, gap };
+}
+
+function partyRuns(heading: string, value: InvoiceParty): Run[] {
+  const extra = [
+    value.gstin ? `GSTIN ${value.gstin}` : null,
+    value.email,
+    value.phone,
+  ].filter(Boolean) as string[];
+
+  return [
+    {
+      text: heading.toUpperCase(),
+      font: BOLD,
+      size: 7.5,
+      color: LABEL,
+      gap: 0,
+      spacing: 0.8,
+    },
+    { text: value.name, font: BOLD, size: 10.5, color: INK, gap: 6 },
+    ...value.lines.map((line) => body(line)),
+    ...extra.map((line) => body(line)),
+  ];
+}
+
+/**
+ * The shop's email and phone number, on one line or on two.
+ *
+ * Joined with a separator while they fit, because that is one line of grey
+ * under the address instead of two and the block reads as a signature. Split
+ * the moment they do not, because the alternative — pdfkit wrapping a line
+ * whose only break opportunity is the separator — leaves a phone number
+ * stranded on a line of its own anyway, after the email has already been
+ * squeezed. Measured rather than guessed at a character count: "Rs." is not the
+ * only thing on this page whose width depends on the glyphs.
+ */
+function contactRuns(doc: Doc, seller: InvoiceParty, width: number): Run[] {
+  const parts = [seller.email, seller.phone].filter(Boolean) as string[];
+  if (parts.length === 0) return [];
+
+  const joined = parts.join('   ·   ');
+  doc.font('Helvetica').fontSize(9);
+
+  if (parts.length === 1 || doc.widthOfString(joined) <= width) {
+    return [body(joined, 4)];
+  }
+
+  return parts.map((part, index) => body(part, index === 0 ? 4 : 1));
+}
+
+function runsHeight(doc: Doc, runs: Run[], width: number): number {
+  return runs.reduce((total, run) => {
+    doc.font(run.font).fontSize(run.size);
+    return (
+      total +
+      run.gap +
+      doc.heightOfString(run.text, { width, characterSpacing: run.spacing ?? 0 })
+    );
+  }, 0);
+}
+
+/** Draws the block and returns the y it ended at. */
+function drawRuns(doc: Doc, runs: Run[], x: number, y: number, width: number): number {
+  let top = y;
+  for (const run of runs) {
+    doc.font(run.font).fontSize(run.size).fillColor(run.color);
+    doc.text(run.text, x, top + run.gap, {
+      width,
+      characterSpacing: run.spacing ?? 0,
+    });
+    top = doc.y;
+  }
+  return top;
+}
+
+// --- Marks -------------------------------------------------------------------
+
+/**
+ * A tinted block with a coloured edge down its left side.
+ *
+ * The hairline border is unconditional, and for the same reason `edgeOf` gives
+ * in `common/colour`: a 5% wash of a pale brand is within a hair of white, and
+ * without an outline such a store's address blocks simply vanish.
+ */
+function plate(
+  doc: Doc,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  fill: string,
+  edge: string,
+): void {
+  doc.rect(x, y, width, height).fill(fill);
+  doc.strokeColor(RULE).lineWidth(0.5);
+  doc.rect(x, y, width, height).stroke();
+  doc.rect(x, y, 3, height).fill(edge);
+}
+
+/** A pill, sized to its own label, hung from the right edge. */
+function badge(
+  doc: Doc,
+  label: string,
+  ink: string,
+  fill: string,
+  rightEdge: number,
+  y: number,
+): number {
+  const height = 17;
+  doc.font(BOLD).fontSize(7.5);
+  const width = doc.widthOfString(label, { characterSpacing: 1 }) + 22;
+  const x = rightEdge - width;
+
+  doc.roundedRect(x, y, width, height, height / 2).fill(fill);
+  doc.fillColor(ink);
+  doc.text(label, x, y + 5.4, { width, align: 'center', characterSpacing: 1 });
+
+  return y + height;
+}
+
+// --- Helpers -----------------------------------------------------------------
 
 function right(
   doc: Doc,
   text: string,
   column: { x: number; width: number },
   y: number,
+  options: PDFKit.Mixins.TextOptions = {},
 ): void {
-  doc.text(text, column.x, y, { width: column.width, align: 'right' });
+  doc.text(text, column.x, y, { width: column.width, align: 'right', ...options });
+}
+
+/**
+ * The small grey line under a product name.
+ *
+ * The variant and SKU, plus the discount when there was one. A per-line discount
+ * that appears nowhere on the invoice is the sort of omission a buyer notices
+ * when the arithmetic on their own copy does not close, and there is no room on
+ * the measure for a seventh column.
+ */
+function lineMeta(line: InvoiceLine, money: (value: string) => string): string | null {
+  const parts = [
+    line.meta?.trim() || null,
+    Number(line.discount) > 0 ? `less ${money(line.discount)}` : null,
+  ].filter(Boolean) as string[];
+
+  return parts.length > 0 ? parts.join('  ·  ') : null;
 }
 
 /**
@@ -519,4 +1050,141 @@ function formatDate(value: Date): string {
     month: 'short',
     year: 'numeric',
   }).format(value);
+}
+
+// --- The total, written out --------------------------------------------------
+
+const ONES = [
+  '',
+  'One',
+  'Two',
+  'Three',
+  'Four',
+  'Five',
+  'Six',
+  'Seven',
+  'Eight',
+  'Nine',
+  'Ten',
+  'Eleven',
+  'Twelve',
+  'Thirteen',
+  'Fourteen',
+  'Fifteen',
+  'Sixteen',
+  'Seventeen',
+  'Eighteen',
+  'Nineteen',
+];
+
+const TENS = [
+  '',
+  '',
+  'Twenty',
+  'Thirty',
+  'Forty',
+  'Fifty',
+  'Sixty',
+  'Seventy',
+  'Eighty',
+  'Ninety',
+];
+
+/** 0–99. Hyphenated above twenty, which is how a cheque is written. */
+function underHundred(n: number): string {
+  if (n < 20) return ONES[n];
+  const unit = n % 10;
+  const ten = TENS[Math.floor(n / 10)];
+  return unit === 0 ? ten : `${ten}-${ONES[unit]}`;
+}
+
+function underThousand(n: number): string {
+  const hundreds = Math.floor(n / 100);
+  const rest = n % 100;
+  return [
+    hundreds > 0 ? `${ONES[hundreds]} Hundred` : '',
+    rest > 0 ? underHundred(rest) : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/** Lakh and crore: the grouping the figures on this invoice are already in. */
+function indianWords(n: number): string {
+  if (n === 0) return 'Zero';
+
+  const crore = Math.floor(n / 1e7);
+  const lakh = Math.floor((n % 1e7) / 1e5);
+  const thousand = Math.floor((n % 1e5) / 1e3);
+  const rest = n % 1e3;
+
+  return [
+    // Recursive, so that 132 crore reads "One Hundred Thirty-Two Crore" rather
+    // than running out of names above the largest one.
+    crore > 0 ? `${indianWords(crore)} Crore` : '',
+    lakh > 0 ? `${underHundred(lakh)} Lakh` : '',
+    thousand > 0 ? `${underHundred(thousand)} Thousand` : '',
+    rest > 0 ? underThousand(rest) : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
+}
+
+/** Thousand, million, billion — for the currencies that count that way. */
+function westernWords(n: number): string {
+  if (n === 0) return 'Zero';
+
+  const scales: [number, string][] = [
+    [1e9, 'Billion'],
+    [1e6, 'Million'],
+    [1e3, 'Thousand'],
+  ];
+
+  let rest = n;
+  const parts: string[] = [];
+  for (const [size, name] of scales) {
+    const count = Math.floor(rest / size);
+    if (count > 0) parts.push(`${westernWords(count)} ${name}`);
+    rest %= size;
+  }
+  if (rest > 0) parts.push(underThousand(rest));
+
+  return parts.join(' ');
+}
+
+/**
+ * The total, written out.
+ *
+ * Every Indian invoice carries one, for a reason that outlived the paper it was
+ * invented for: figures can be altered with a pen and words cannot, so the words
+ * are what a dispute falls back on. Rupees and paise are named because that is
+ * the convention here; a foreign currency gets its ISO code and its minor unit
+ * as a fraction, since guessing whether a currency's hundredth is called a cent,
+ * a fils or a satang would be inventing facts about somebody else's money.
+ *
+ * Returns null for anything it cannot state honestly — a value that is not a
+ * number, a negative one, or a figure past the largest scale named here — and
+ * the caller prints no words at all rather than a wrong sentence.
+ */
+export function amountInWords(value: string, currency: string): string | null {
+  const amount = Number.parseFloat(value);
+  if (!Number.isFinite(amount) || amount < 0 || amount >= 1e12) return null;
+
+  // Rounded to the paisa before it is split, and rounded the same way
+  // `formatMoney` rounds — the words must never contradict the figure they are
+  // printed under, which is the one job they have.
+  const minor = Math.round(amount * 100);
+  const whole = Math.floor(minor / 100);
+  const fraction = minor % 100;
+
+  if (currency === 'INR') {
+    // Singular for one, because "One Paise Only" on a document somebody files
+    // is the sort of thing that gets the rest of it read twice.
+    const unit = fraction === 1 ? 'Paisa' : 'Paise';
+    const paise = fraction > 0 ? ` and ${underHundred(fraction)} ${unit}` : '';
+    return `Rupees ${indianWords(whole)}${paise} Only`;
+  }
+
+  const cents = fraction > 0 ? ` and ${String(fraction).padStart(2, '0')}/100` : '';
+  return `${currency} ${westernWords(whole)}${cents} Only`;
 }

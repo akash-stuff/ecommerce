@@ -1,5 +1,10 @@
 import { seller, taxBreakdown } from '../src/invoices/invoices.service';
-import { formatMoney, renderInvoicePdf } from '../src/invoices/invoice-pdf';
+import {
+  amountInWords,
+  formatMoney,
+  renderInvoicePdf,
+  settlementNote,
+} from '../src/invoices/invoice-pdf';
 import type { InvoiceData } from '../src/invoices/invoice-data';
 
 /**
@@ -191,11 +196,112 @@ describe('rendered invoice', () => {
     expect((pdf.toString('latin1').match(/\/Type \/Page\b/g) ?? []).length).toBeGreaterThan(1);
   });
 
+  /**
+   * The line under "Balance due". It is the only sentence on the sheet that
+   * tells a buyer what to do next, so it is asserted as words rather than
+   * left to be eyeballed in a preview.
+   */
+  describe('the note under the balance', () => {
+    it('says nothing is owed on a paid order, and how it was paid', () => {
+      expect(settlementNote(base).standing).toBe(
+        'Received in full by Cash on delivery. Nothing further is due.',
+      );
+    });
+
+    it('asks for the invoice number by name when the balance stands', () => {
+      expect(settlementNote({ ...base, isPaid: false }).standing).toBe(
+        'Payable by Cash on delivery. Please quote INV-ORD-1042.',
+      );
+    });
+
+    it('names no method when the order carries none', () => {
+      expect(settlementNote({ ...base, paymentMethod: null }).standing).toBe(
+        'Received in full. Nothing further is due.',
+      );
+    });
+
+    /**
+     * The reason this block exists: an invoice queried from a second sheet
+     * that carries no letterhead still has to say where to write.
+     */
+    it('carries the billing address and number the letterhead used', () => {
+      expect(
+        settlementNote({
+          ...base,
+          seller: { ...base.seller, email: 'billing@northwind.example', phone: '+91 80 4000 1234' },
+        }).reach,
+      ).toEqual(['billing@northwind.example', '+91 80 4000 1234']);
+    });
+
+    it('prints neither rather than a "Queries:" with nothing after it', () => {
+      expect(settlementNote(base).reach).toEqual([]);
+      expect(settlementNote({ ...base, seller: { ...base.seller, phone: '  ' } }).reach).toEqual([]);
+    });
+  });
+
   it('does not call itself a tax invoice before it is paid', async () => {
     const unpaid = await renderInvoicePdf({ ...base, isPaid: false });
     const paid = await renderInvoicePdf(base);
     // The strings are compressed inside the content stream, so the documents
     // are compared to each other rather than searched for the heading.
     expect(unpaid.length).not.toBe(paid.length);
+  });
+});
+
+/**
+ * The words under the total are the copy a dispute falls back on when the
+ * figures are argued about, so they are tested as text rather than left to be
+ * eyeballed in a preview.
+ */
+describe('amount in words', () => {
+  it('counts in lakh and crore for rupees', () => {
+    expect(amountInWords('17382.60', 'INR')).toBe(
+      'Rupees Seventeen Thousand Three Hundred Eighty-Two and Sixty Paise Only',
+    );
+    expect(amountInWords('12345678.00', 'INR')).toBe(
+      'Rupees One Crore Twenty-Three Lakh Forty-Five Thousand Six Hundred Seventy-Eight Only',
+    );
+  });
+
+  it('leaves the paise out when there are none', () => {
+    expect(amountInWords('500.00', 'INR')).toBe('Rupees Five Hundred Only');
+  });
+
+  it('says zero rather than nothing at all', () => {
+    expect(amountInWords('0.00', 'INR')).toBe('Rupees Zero Only');
+  });
+
+  it('names one paisa in the singular', () => {
+    expect(amountInWords('1.01', 'INR')).toBe('Rupees One and One Paisa Only');
+    expect(amountInWords('1.02', 'INR')).toBe('Rupees One and Two Paise Only');
+  });
+
+  /**
+   * The words and the figure are printed inches apart on the same sheet. A
+   * total that rounds one way in one and the other way in the other is the kind
+   * of discrepancy that gets a whole invoice queried.
+   */
+  it('rounds the same way the figure above it rounds', () => {
+    expect(amountInWords('1.006', 'INR')).toBe('Rupees One and One Paisa Only');
+    expect(formatMoney('1.006', 'INR')).toBe('Rs. 1.01');
+    expect(amountInWords('1.004', 'INR')).toBe('Rupees One Only');
+    expect(formatMoney('1.004', 'INR')).toBe('Rs. 1.00');
+  });
+
+  /**
+   * Naming a foreign currency's hundredth would be inventing facts about
+   * somebody else's money — a cent, a fils and a satang are not the same word.
+   */
+  it('writes a foreign currency as its code and a fraction', () => {
+    expect(amountInWords('17382.60', 'USD')).toBe(
+      'USD Seventeen Thousand Three Hundred Eighty-Two and 60/100 Only',
+    );
+    expect(amountInWords('2000000.00', 'USD')).toBe('USD Two Million Only');
+  });
+
+  it('says nothing rather than something wrong', () => {
+    expect(amountInWords('not a number', 'INR')).toBeNull();
+    expect(amountInWords('-5.00', 'INR')).toBeNull();
+    expect(amountInWords('1000000000000.00', 'INR')).toBeNull();
   });
 });

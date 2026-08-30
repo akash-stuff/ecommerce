@@ -21,7 +21,8 @@ import {
   PaginatedResult,
   safeOrderBy,
 } from '../common/dto/pagination.dto';
-import { CreateTenantDto, UpdateTenantDto } from './dto/tenant.dto';
+import { StaffService } from '../staff/staff.service';
+import { AddStoreAdminDto, CreateTenantDto, UpdateTenantDto } from './dto/tenant.dto';
 
 /**
  * Platform-level service. Everything here runs unscoped by design, so each
@@ -37,6 +38,7 @@ export class TenantsService {
     private readonly resolver: TenantResolverService,
     private readonly audit: AuditService,
     private readonly notifications: NotificationsService,
+    private readonly staff: StaffService,
   ) {}
 
   private readonly logger = new Logger(TenantsService.name);
@@ -507,6 +509,50 @@ export class TenantsService {
     );
 
     return { email: membership.user.email, temporaryPassword, otherStores };
+  }
+
+  /**
+   * Gives a store another administrator, from the platform console.
+   *
+   * The work is `StaffService.addMember` — the same row, the same invite, the
+   * same one-time password that is returned once and stored nowhere. What this
+   * adds is the tenant, which on a `platform/*` request is in the path rather
+   * than in the request context there is none of.
+   *
+   * Refused on a store that does not exist, and — deliberately — *allowed* on a
+   * suspended one. Restoring access to a shop that has lost its owner's login is
+   * a large part of why this button exists, and a suspended store is exactly the
+   * state that happens in.
+   */
+  async addAdmin(id: string, dto: AddStoreAdminDto) {
+    const tenant = await this.prisma.runUnscoped((db) =>
+      db.tenant.findUnique({
+        where: { id },
+        select: { id: true, businessName: true },
+      }),
+    );
+
+    if (!tenant) {
+      throw new NotFoundException({
+        message: 'That store does not exist.',
+        code: 'TENANT_NOT_FOUND',
+      });
+    }
+
+    const result = await this.staff.addMember(id, {
+      ...dto,
+      role: dto.role ?? SystemRole.TENANT_ADMIN,
+    });
+
+    void this.audit.record({
+      action: 'tenant.adminAdded',
+      entityType: 'Tenant',
+      entityId: id,
+      tenantId: id,
+      changes: { businessName: tenant.businessName, email: dto.email, role: result.role },
+    });
+
+    return result;
   }
 
   async activate(id: string) {

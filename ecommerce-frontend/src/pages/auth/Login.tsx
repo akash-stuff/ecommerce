@@ -7,7 +7,7 @@ import { AlertTriangle, ArrowLeft, Eye, EyeOff, Loader2 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { apiClient, unwrap } from '@/services/api-client';
 import { CodeInput } from '@/components/CodeInput';
-import { EverystoreMark, Wordmark } from '@/features/platform/brand';
+import { EverystoreMark } from '@/features/platform/brand';
 
 const schema = z.object({
   email: z.string().email('Enter a valid email address.'),
@@ -15,19 +15,29 @@ const schema = z.object({
 });
 type FormValues = z.infer<typeof schema>;
 
-/** One primary button, so sign-in and reset cannot drift apart. */
+/**
+ * One primary button, so sign-in and reset cannot drift apart.
+ *
+ * Coloured by `.cta-primary` in index.css rather than by Tailwind classes —
+ * see the note above that rule. On this screen it matters more than anywhere:
+ * a sign-in button that renders invisibly is not a cosmetic problem, it is a
+ * locked door.
+ */
 const SUBMIT =
-  'inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 text-sm ' +
-  'font-medium text-white shadow-glow transition-all hover:-translate-y-px hover:shadow-lifted ' +
-  'focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 ' +
-  'disabled:translate-y-0 disabled:opacity-60 disabled:shadow-glow-sm';
+  'cta-primary inline-flex w-full items-center justify-center gap-2 rounded-xl py-3 text-sm ' +
+  'font-medium focus:outline-none focus-visible:ring-2 focus-visible:ring-leaf-600 ' +
+  'focus-visible:ring-offset-2';
 
-/** Shared by both inputs so a focus ring never disagrees between them. */
+/**
+ * Shared by both inputs so a focus ring never disagrees between them.
+ *
+ * `field-leaf` carries the green and the ring that animates out from the edge
+ * on focus — the acknowledgement a tap gets on a touch screen, where there is
+ * no hover state to have said the field was live.
+ */
 const FIELD =
-  'w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm text-ink-950 shadow-card ' +
-  'placeholder:text-ink-400 transition-colors hover:border-ink-300 ' +
-  'focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/25 ' +
-  'disabled:opacity-60';
+  'field-leaf w-full rounded-xl border border-ink-200 bg-white px-3.5 py-2.5 text-sm ' +
+  'text-ink-950 shadow-card placeholder:text-ink-400 disabled:opacity-60';
 
 export default function Login() {
   const login = useAuthStore((s) => s.login);
@@ -83,37 +93,41 @@ export default function Login() {
         which is the wrong trade on the one screen whose entire job is four
         fields — so it is removed rather than stacked.
       */}
-      <aside className="relative hidden w-[46%] max-w-xl flex-col justify-between overflow-hidden border-r border-ink-100 bg-ink-50/70 p-12 text-ink-900 lg:flex">
+      <aside className="relative hidden w-[46%] max-w-xl overflow-hidden border-r border-ink-100 bg-ink-50 lg:block">
+        {/*
+          The brand poster, filling the panel.
+
+          It already carries the mark, the wordmark and the line under it, so
+          none of that is repeated on top — a second wordmark over a photograph
+          of the wordmark is the kind of thing nobody notices writing and
+          everybody notices reading.
+
+          `object-cover` because the panel's proportions follow the window and
+          the poster's do not; the composition is centred, so what a tall narrow
+          panel loses is background rather than subject.
+        */}
+        <img
+          src="/marketing/signin.jpg"
+          alt="Everystore — one platform, every store"
+          width={900}
+          height={1200}
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+
+        {/* A scrim under the bottom third only, so the link below has something
+            to sit on whatever part of the photograph lands there. */}
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute inset-0"
-        >
-          <div className="absolute left-[-8rem] top-[-10rem] h-[32rem] w-[32rem] rounded-full bg-[radial-gradient(closest-side,rgb(22_101_52_/_0.12),transparent)] blur-2xl" />
-          <div className="absolute bottom-[-12rem] right-[-6rem] h-[26rem] w-[26rem] rounded-full bg-[radial-gradient(closest-side,rgb(245_165_36_/_0.16),transparent)] blur-2xl" />
-        </div>
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-40 bg-gradient-to-t from-ink-950/45 to-transparent"
+        />
 
         <Link
           to="/"
-          className="relative z-10 inline-flex w-fit items-center text-brand transition-opacity hover:opacity-80"
+          className="absolute bottom-8 left-8 z-10 inline-flex items-center gap-1.5 rounded-full bg-white/85 px-4 py-2 text-sm font-medium text-ink-800 shadow-card backdrop-blur transition-colors hover:bg-white hover:text-ink-950"
         >
-          <Wordmark />
+          <ArrowLeft size={14} />
+          Back to everystore.com
         </Link>
-
-        <div className="relative z-10">
-          <p className="font-display text-3xl leading-tight tracking-tight text-ink-950">
-            One platform.
-            <br />
-            <span className="text-brand">Every store its own.</span>
-          </p>
-          <p className="mt-4 max-w-sm text-sm leading-relaxed text-ink-600">
-            Store owners and platform staff sign in here. Where you land depends
-            on what you run.
-          </p>
-        </div>
-
-        <p className="relative z-10 text-xs text-ink-500">
-          Everystore — white-label commerce.
-        </p>
       </aside>
 
       {/* The form half. */}
@@ -128,8 +142,8 @@ export default function Login() {
 
         <div className="flex flex-1 items-center justify-center">
           <div className="w-full max-w-sm">
-            <span className="text-brand lg:hidden">
-              <EverystoreMark size={30} />
+            <span className="lg:hidden">
+              <EverystoreMark size={32} />
             </span>
 
             {resetting ? (

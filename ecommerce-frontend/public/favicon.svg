@@ -1,16 +1,30 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
   <!--
-    Everystore.
+    Everystore: the shopping bag, white on a green tile.
+
+    The same artwork as <EverystoreMark /> — same handle arc, same body, same
+    smile — scaled and centred inside the tile. It is drawn here rather than
+    imported because a favicon is a standalone file the browser fetches before
+    any of the app exists.
 
     A filled tile rather than the bare mark: at 16px a transparent glyph sits on
-    whatever the browser paints behind it, and the deep green would disappear
-    against a dark tab strip. The tile carries the colour, the squares carry the
-    idea — many stores, one platform.
+    whatever the browser paints behind it, and a green bag would disappear
+    against a dark tab strip.
 
-    Deliberately simpler than the in-app <EverystoreMark />: three overlapping
-    squares turn to mush at favicon size, so this is two plus the tile edge.
+    The tile is the darker green (leaf-800) rather than the mark's own leaf-600,
+    because this one has to hold its own against a *white* tab strip too, and it
+    is the value `theme-color` in index.html already uses.
+
+    The smile is painted in the tile colour instead of being masked out. On the
+    in-app mark it must be a real hole, because what sits behind it varies; here
+    the ground is one known colour, so a stroke in that colour is the same
+    result with none of the mask machinery — which matters for a file some
+    favicon pipelines rasterise with a reduced SVG renderer.
   -->
   <rect width="32" height="32" rx="7" fill="#166534"/>
-  <rect x="7" y="7" width="13" height="13" rx="3.5" fill="#FFFFFF" opacity="0.45"/>
-  <rect x="13" y="13" width="12" height="12" rx="3.5" fill="#F5A524"/>
+  <g transform="translate(1.45 1) scale(0.909)">
+    <path d="M11.5 11V10a4.5 4.5 0 0 1 9 0v1" stroke="#FFFFFF" stroke-width="2.4" stroke-linecap="round" fill="none"/>
+    <rect x="5.5" y="11" width="21" height="16.5" rx="4.5" fill="#FFFFFF"/>
+    <path d="M12.6 18C12.6 21.4 19.4 21.4 19.4 18" stroke="#166534" stroke-width="2.6" stroke-linecap="round" fill="none"/>
+  </g>
 </svg>

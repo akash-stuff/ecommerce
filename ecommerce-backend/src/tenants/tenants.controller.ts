@@ -15,7 +15,12 @@ import { TenantsService } from './tenants.service';
 import { PlatformOnly, RequirePermissions } from '../common/decorators';
 import { PERMISSIONS } from '../common/rbac/permissions';
 import { PaginationQueryDto } from '../common/dto/pagination.dto';
-import { CreateTenantDto, DeleteTenantDto, UpdateTenantDto } from './dto/tenant.dto';
+import {
+  AddStoreAdminDto,
+  CreateTenantDto,
+  DeleteTenantDto,
+  UpdateTenantDto,
+} from './dto/tenant.dto';
 
 @ApiTags('Platform · Tenants')
 @ApiBearerAuth()
@@ -88,5 +93,19 @@ export class TenantsController {
   @ApiOperation({ summary: "Reset the store owner's password; shown once" })
   resetOwnerPassword(@Param('id', ParseUUIDPipe) id: string) {
     return this.tenants.resetOwnerPassword(id);
+  }
+
+  /**
+   * Another administrator for a store, added from the console.
+   *
+   * The store's own Staff screen is the ordinary way to do this, and it stays
+   * that way — this exists for the case that screen cannot help with, which is
+   * a shop whose only admin account has been lost. Same row, same invite email,
+   * same one-time password returned exactly once.
+   */
+  @Post(':id/admins')
+  @ApiOperation({ summary: 'Give someone admin access to a store; returns a one-time password' })
+  addAdmin(@Param('id', ParseUUIDPipe) id: string, @Body() dto: AddStoreAdminDto) {
+    return this.tenants.addAdmin(id, dto);
   }
 }

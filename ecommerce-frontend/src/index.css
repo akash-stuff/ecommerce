@@ -403,3 +403,127 @@
     transition: none;
   }
 }
+
+/* ---------------------------------------------------------------------------
+   The marketing page and the sign-in screen: primary button, and the green
+   the fields answer a tap with.
+
+   Plain CSS with literal colours, deliberately — no @apply, no theme lookup.
+
+   Everything else on those screens is Tailwind, and a Tailwind class the config
+   has not generated produces *no declarations at all* rather than an error. The
+   marketing page's primary button spent three rounds of review rendering white
+   on white for exactly that reason and reading as "the button is missing". The
+   two things a visitor cannot do without — press the primary action, and see
+   that a field took their tap — are therefore written here, where they depend
+   on nothing but this file having loaded.
+
+   The colours match `leaf-500`/`600`/`700` in tailwind.config.js. That is a
+   duplication and it is the point: this is the copy that still works when the
+   other one is stale.
+   --------------------------------------------------------------------------- */
+
+.cta-primary {
+  background-color: #15803d;
+  color: #ffffff;
+  box-shadow:
+    0 1px 2px rgb(21 128 61 / 0.1),
+    0 12px 28px -8px rgb(34 197 94 / 0.32);
+  transition:
+    background-color 160ms ease-out,
+    box-shadow 160ms ease-out,
+    transform 160ms ease-out;
+}
+
+.cta-primary:hover:not(:disabled) {
+  background-color: #166534;
+  transform: translateY(-1px);
+  box-shadow:
+    0 2px 4px rgb(21 128 61 / 0.1),
+    0 24px 48px -12px rgb(34 197 94 / 0.36);
+}
+
+/* Presses down rather than just darkening: on a touch screen there is no hover
+   state to have told anyone the control was live. */
+.cta-primary:active:not(:disabled) {
+  transform: translateY(0) scale(0.985);
+  background-color: #14532d;
+}
+
+.cta-primary:disabled {
+  opacity: 0.4;
+  transform: none;
+  pointer-events: none;
+}
+
+/* The same control on the dark green band: white plate, green label. A separate
+   rule rather than a modifier because it inverts rather than tweaks, and its
+   label colour is the half that would otherwise go generic on a stale build. */
+.cta-on-dark {
+  background-color: #ffffff;
+  color: #166534;
+  box-shadow:
+    0 1px 2px rgb(5 46 22 / 0.12),
+    0 12px 28px -8px rgb(5 46 22 / 0.35);
+  transition:
+    background-color 160ms ease-out,
+    box-shadow 160ms ease-out,
+    transform 160ms ease-out;
+}
+
+.cta-on-dark:hover:not(:disabled) {
+  background-color: #f0fdf4;
+  transform: translateY(-1px);
+}
+
+.cta-on-dark:active:not(:disabled) {
+  transform: translateY(0) scale(0.985);
+  background-color: #dcfce7;
+}
+
+/* --- Fields ---------------------------------------------------------------
+   The ring animates *out* from the edge on focus rather than appearing at its
+   final size, so a tap on a phone — where there is no cursor to follow and no
+   hover to precede it — is visibly acknowledged by the field itself.
+
+   On `:focus`, not `:focus-visible`: focus-visible is suppressed for pointer
+   and touch input in most browsers, which is precisely the case this is for. */
+.field-leaf {
+  transition:
+    border-color 150ms ease-out,
+    box-shadow 150ms ease-out;
+}
+
+.field-leaf:hover:not(:disabled) {
+  border-color: #86efac;
+}
+
+.field-leaf:focus {
+  border-color: #22c55e;
+  outline: none;
+  box-shadow: 0 0 0 3px rgb(34 197 94 / 0.2);
+  animation: leaf-focus 420ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes leaf-focus {
+  from {
+    box-shadow: 0 0 0 0 rgb(34 197 94 / 0.55);
+  }
+  to {
+    box-shadow: 0 0 0 3px rgb(34 197 94 / 0.2);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .field-leaf:focus {
+    animation: none;
+  }
+  .cta-primary,
+  .cta-primary:hover:not(:disabled),
+  .cta-primary:active:not(:disabled),
+  .cta-on-dark,
+  .cta-on-dark:hover:not(:disabled),
+  .cta-on-dark:active:not(:disabled) {
+    transform: none;
+  }
+}

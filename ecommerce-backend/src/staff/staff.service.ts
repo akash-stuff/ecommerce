@@ -116,8 +116,24 @@ export class StaffService {
    * one for an existing user would reset the password they use elsewhere.
    */
   async create(dto: CreateStaffDto) {
-    const tenantId = RequestContextStore.requireTenantId();
+    return this.addMember(RequestContextStore.requireTenantId(), dto);
+  }
 
+  /**
+   * The same thing, for a store the caller is not signed in to.
+   *
+   * The tenant is a parameter rather than a read of the request context because
+   * the platform console adds administrators to stores from outside them —
+   * there is no tenant on a `platform/*` request to read. Keeping one
+   * implementation matters more than the extra argument: the invite email, the
+   * one-time password rule and the "already a member" refusal are the parts
+   * that would drift if the console grew a second copy of this.
+   *
+   * The invite link needs no adjustment for the caller: `/admin` and `/platform`
+   * are two route trees in one app behind one `/login`, so the console and the
+   * store's own Staff screen are already on the same hostname.
+   */
+  async addMember(tenantId: string, dto: CreateStaffDto) {
     const existingUser = await this.prisma.runUnscoped((db) =>
       db.user.findUnique({ where: { email: dto.email }, select: { id: true } }),
     );
@@ -166,14 +182,18 @@ export class StaffService {
       action: 'staff.added',
       entityType: 'TenantUser',
       entityId: membership.id,
+      tenantId,
       // The password is deliberately absent: an audit row is long-lived and a
       // credential in one is a credential that outlives its usefulness.
       changes: { email: dto.email, role: dto.role, newAccount: !existingUser },
     });
 
-    const store = await this.prisma.db.store.findFirst({
-      select: { name: true, email: true },
-    });
+    // Named rather than left to the tenant-scoped client: on a platform request
+    // there is no tenant in context for the extension to filter by, and the
+    // wrong store's name in the invite is the sort of thing nobody reports.
+    const store = await this.prisma.runUnscoped((db) =>
+      db.store.findFirst({ where: { tenantId }, select: { name: true, email: true } }),
+    );
 
     /**
      * Emailed but not awaited into a failure: the account exists by now, and

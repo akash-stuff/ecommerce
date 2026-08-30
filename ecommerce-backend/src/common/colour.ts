@@ -73,15 +73,30 @@ export function inkOn(fill: string): string {
  * that band.
  */
 export function buttonFill(brand: string): string {
-  let fill = safeHex(brand);
+  return readableOn(brand, '#FFFFFF');
+}
 
-  for (let step = 0; step < 24 && contrast(fill, '#FFFFFF') < 4.5; step += 1) {
+/**
+ * The tenant's colour, darkened until type set in it can be read on `ground`.
+ *
+ * The same walk `buttonFill` does, against a stated background instead of an
+ * assumed white one — the invoice sets small labels on a 12% tint of the brand,
+ * which is a darker ground than white and needs a darker ink to clear the same
+ * ratio. One loop rather than two: a second copy of this walk is a second
+ * threshold that can drift, which is the whole argument of this file.
+ *
+ * A colour so pale that twenty-four steps did not reach 4.5:1 is not type; ink
+ * is. Rare, and better than an unreadable label.
+ */
+export function readableOn(brand: string, ground = '#FFFFFF'): string {
+  let fill = safeHex(brand);
+  const on = safeHex(ground);
+
+  for (let step = 0; step < 24 && contrast(fill, on) < 4.5; step += 1) {
     fill = darken(fill, 0.06);
   }
 
-  // A colour so pale that twenty-four steps did not reach 4.5:1 is not a button
-  // fill; ink is. Rare, and better than an unreadable label.
-  return contrast(fill, '#FFFFFF') >= 4.5 ? fill : INK_STRONG;
+  return contrast(fill, on) >= 4.5 ? fill : INK_STRONG;
 }
 
 /**

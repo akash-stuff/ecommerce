@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { Toaster } from '@/components/Toasts';
+import { Lockup } from '@/features/platform/brand';
 
 const NAV = [
   { to: '/platform', label: 'Overview', icon: LayoutDashboard, end: true },
@@ -48,9 +49,11 @@ export function PlatformLayout() {
     <>
       <div className="flex items-start justify-between px-5 py-5">
         <div>
-          <p className="font-display text-sm font-semibold tracking-tight text-ink-950">
-            Platform
-          </p>
+          {/* The platform's own lockup, in the platform's own green.
+              It paints itself rather than reading the tenant theme tokens — see
+              features/platform/brand — so the console looks the same whichever
+              store's storefront was last open in this tab. */}
+          <Lockup size="sm" />
           {/* The chip, not the chrome, is what says "this is the whole estate". */}
           <span className="mt-1.5 inline-flex items-center gap-1.5 rounded-full bg-brand/10 px-2 py-0.5 text-[11px] font-medium text-brand ring-1 ring-inset ring-brand/15">
             <span className="h-1.5 w-1.5 rounded-full bg-brand-secondary" />
@@ -151,7 +154,7 @@ export function PlatformLayout() {
           >
             <Menu size={20} />
           </button>
-          <span className="text-sm font-semibold text-ink-950">Platform</span>
+          <Lockup size="sm" />
         </div>
 
         <main className="min-w-0 flex-1">

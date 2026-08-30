@@ -24,6 +24,15 @@ export class ThemeService {
         metaDescription: true,
         productDescription: true,
         isPublished: true,
+        // The contact block. Selected here rather than fetched separately
+        // because the settings form edits it in the same save as the name.
+        email: true,
+        phone: true,
+        addressLine1: true,
+        addressLine2: true,
+        city: true,
+        state: true,
+        postalCode: true,
         template: { select: { id: true, slug: true, name: true } },
         theme: true,
       },
@@ -241,6 +250,32 @@ export class ThemeService {
     if (dto.productDescription !== undefined) {
       data.productDescription = dto.productDescription.trim() || null;
     }
+
+    /**
+     * The same rule for the contact block, and for the same reason: these are
+     * nullable columns whose consumers ask "is there a value" before they print
+     * a line. An empty string is a value, so a cleared phone number would put an
+     * empty contact line on an invoice rather than removing it.
+     *
+     * The email is deliberately not in that list. It is NOT NULL, the storefront
+     * footer and every order email print it unconditionally, and the dto refuses
+     * a blank one before this code ever runs.
+     */
+    const clearable = [
+      'phone',
+      'addressLine1',
+      'addressLine2',
+      'city',
+      'state',
+      'postalCode',
+    ] as const;
+
+    for (const field of clearable) {
+      const value = dto[field];
+      if (value !== undefined) data[field] = value.trim() || null;
+    }
+
+    if (dto.email !== undefined) data.email = dto.email.trim();
 
     return this.get().then((store) =>
       this.prisma.db.store.update({ where: { id: store.id }, data }),

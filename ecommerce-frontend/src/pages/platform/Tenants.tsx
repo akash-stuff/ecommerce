@@ -1,7 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Trash2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  Ban,
+  CirclePlay,
+  KeyRound,
+  Pencil,
+  Trash2,
+  UserPlus,
+} from 'lucide-react';
 import { platformService, type PlatformTenant } from '@/services/platform.service';
 import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { DataTable, StatusBadge, type Column } from '@/components/admin/DataTable';
@@ -42,6 +50,31 @@ interface EditTenant {
   contactPhone: string;
 }
 
+/**
+ * Someone the platform is about to give access to a store.
+ *
+ * The store is carried along rather than looked up again, because the dialog
+ * names it in three places and a console operator adding an admin to the wrong
+ * shop is exactly the mistake this screen should make hard.
+ */
+interface NewStoreAdmin {
+  tenant: PlatformTenant;
+  email: string;
+  firstName: string;
+  lastName: string;
+  phone: string;
+  role: 'TENANT_ADMIN' | 'STAFF';
+}
+
+const blankAdmin = (tenant: PlatformTenant): NewStoreAdmin => ({
+  tenant,
+  email: '',
+  firstName: '',
+  lastName: '',
+  phone: '',
+  role: 'TENANT_ADMIN',
+});
+
 const blank: NewTenant = {
   businessName: '',
   slug: '',
@@ -53,6 +86,58 @@ const blank: NewTenant = {
   planId: '',
   templateId: '',
 };
+
+const ROW_ACTION_TONES = {
+  /** The ordinary ones: grey until pointed at, then the platform green. */
+  default: 'text-ink-400 hover:bg-brand/[0.08] hover:text-brand',
+  /** Suspend. Reversible, but it stops a shop trading. */
+  warn: 'text-ink-400 hover:bg-amber-50 hover:text-amber-700',
+  /** Delete. The only one that cannot be undone. */
+  danger: 'text-ink-400 hover:bg-red-50 hover:text-red-600',
+} as const;
+
+/**
+ * One icon button in a table row.
+ *
+ * `label` is the whole accessible name and it is not optional. These used to be
+ * text links — "Edit", "Suspend", "Add admin" — which said what they did and,
+ * repeated down twenty rows, said it twenty times. As icons they are quieter,
+ * but an icon with no name is a button a screen reader announces as "button"
+ * and a hover reveals nothing about.
+ *
+ * So the label names the store as well as the verb: "Suspend Northwind", not
+ * "Suspend". In a list of stores, which row an action belongs to is the part
+ * the icon cannot show, and it is the part worth being sure about before
+ * pressing anything here.
+ *
+ * It doubles as the `title`, so the same words appear as the hover tooltip.
+ */
+function RowAction({
+  icon: Icon,
+  label,
+  onClick,
+  tone = 'default',
+  disabled = false,
+}: {
+  icon: typeof Trash2;
+  label: string;
+  onClick: () => void;
+  tone?: keyof typeof ROW_ACTION_TONES;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-label={label}
+      title={label}
+      className={`rounded-card p-2 transition-colors disabled:pointer-events-none disabled:opacity-40 ${ROW_ACTION_TONES[tone]}`}
+    >
+      <Icon size={15} strokeWidth={1.9} />
+    </button>
+  );
+}
 
 export default function Tenants() {
   const queryClient = useQueryClient();
@@ -71,6 +156,21 @@ export default function Tenants() {
     email: string;
     temporaryPassword: string;
     otherStores: number;
+  } | null>(null);
+  const [addingAdmin, setAddingAdmin] = useState<NewStoreAdmin | null>(null);
+  /**
+   * The account that was just created, and the password it was given.
+   *
+   * `temporaryPassword` is null when the address already had a platform login —
+   * they were given a membership, not a new account, and their existing password
+   * is untouched. The dialog says which of the two happened, because "here is
+   * their password" and "they already have one" need different follow-up.
+   */
+  const [adminIssued, setAdminIssued] = useState<{
+    email: string;
+    role: 'TENANT_ADMIN' | 'STAFF';
+    storeName: string;
+    temporaryPassword: string | null;
   } | null>(null);
   const [editing, setEditing] = useState<EditTenant | null>(null);
   const [deleting, setDeleting] = useState<PlatformTenant | null>(null);
@@ -200,6 +300,27 @@ export default function Tenants() {
     onSuccess: refresh,
   });
 
+  const addAdmin = useMutation({
+    onError: (e) => toastFromError(e),
+    mutationFn: (a: NewStoreAdmin) =>
+      platformService.addStoreAdmin(a.tenant.id, {
+        email: a.email.trim(),
+        firstName: a.firstName.trim(),
+        lastName: a.lastName.trim(),
+        phone: a.phone.trim() || undefined,
+        role: a.role,
+      }),
+    onSuccess: (result, submitted) => {
+      setAddingAdmin(null);
+      setAdminIssued({
+        email: result.email,
+        role: result.role,
+        storeName: submitted.tenant.businessName,
+        temporaryPassword: result.temporaryPassword,
+      });
+    },
+  });
+
   const columns: Column<PlatformTenant>[] = [
     {
       header: 'Store',
@@ -241,9 +362,10 @@ export default function Tenants() {
     {
       header: '',
       cell: (t) => (
-        <span className="flex items-center justify-end gap-3">
-          <button
-            type="button"
+        <span className="flex items-center justify-end gap-0.5">
+          <RowAction
+            icon={Pencil}
+            label={`Edit ${t.businessName}`}
             onClick={() =>
               setEditing({
                 id: t.id,
@@ -253,51 +375,47 @@ export default function Tenants() {
                 contactPhone: t.contactPhone ?? '',
               })
             }
-            className="text-xs underline"
-          >
-            Edit
-          </button>
+          />
 
           {t.status === 'ACTIVE' ? (
-            <button
-              type="button"
+            <RowAction
+              icon={Ban}
+              tone="warn"
+              label={`Suspend ${t.businessName}`}
               onClick={() => setSuspending(t)}
-              className="text-xs text-amber-700 underline"
-            >
-              Suspend
-            </button>
+            />
           ) : (
-            <button
-              type="button"
-              onClick={() => activate.mutate(t.id)}
+            <RowAction
+              icon={CirclePlay}
+              label={`Activate ${t.businessName}`}
               disabled={activate.isPending}
-              className="text-xs underline"
-            >
-              Activate
-            </button>
+              onClick={() => activate.mutate(t.id)}
+            />
           )}
 
-          <button
-            type="button"
+          <RowAction
+            icon={UserPlus}
+            label={`Add an admin to ${t.businessName}`}
+            onClick={() => setAddingAdmin(blankAdmin(t))}
+          />
+
+          <RowAction
+            icon={KeyRound}
+            label={`Reset the owner password for ${t.businessName}`}
             onClick={() => setResetting(t)}
-            className="text-xs underline"
-          >
-            Owner password
-          </button>
+          />
 
           {/* Last, and the only red one. Suspension is the reversible action
               and should be the easier one to reach. */}
-          <button
-            type="button"
+          <RowAction
+            icon={Trash2}
+            tone="danger"
+            label={`Delete ${t.businessName}`}
             onClick={() => {
               setDeleting(t);
               setConfirmSlug('');
             }}
-            aria-label={`Delete ${t.businessName}`}
-            className="rounded p-1 text-ink-400 transition-colors hover:bg-red-50 hover:text-red-600"
-          >
-            <Trash2 size={14} />
-          </button>
+          />
         </span>
       ),
       className: 'text-right',
@@ -623,6 +741,140 @@ export default function Tenants() {
           </div>
 
           <FormError error={remove.error} />
+        </Modal>
+      )}
+
+      {/* The store's own Staff screen is the ordinary way to do this. This is
+          here for the case that screen cannot help with — a shop that has lost
+          the login it would need in order to reach it. */}
+      {addingAdmin && (
+        <Modal
+          title={`Add an admin to ${addingAdmin.tenant.businessName}`}
+          description="They are emailed an invite and can sign in at the same address you do."
+          onClose={() => setAddingAdmin(null)}
+          footer={
+            <>
+              <SecondaryButton onClick={() => setAddingAdmin(null)}>Cancel</SecondaryButton>
+              <PrimaryButton
+                disabled={
+                  addAdmin.isPending ||
+                  !addingAdmin.email.trim() ||
+                  !addingAdmin.firstName.trim() ||
+                  !addingAdmin.lastName.trim()
+                }
+                onClick={() => addAdmin.mutate(addingAdmin)}
+              >
+                {addAdmin.isPending ? 'Adding…' : 'Add admin'}
+              </PrimaryButton>
+            </>
+          }
+        >
+          <FormGrid>
+            <Field label="Email" hint="They sign in with this" wide>
+              <Input
+                type="email"
+                autoFocus
+                value={addingAdmin.email}
+                onChange={(e) => setAddingAdmin({ ...addingAdmin, email: e.target.value })}
+              />
+            </Field>
+
+            <Field label="First name">
+              <Input
+                value={addingAdmin.firstName}
+                onChange={(e) => setAddingAdmin({ ...addingAdmin, firstName: e.target.value })}
+              />
+            </Field>
+
+            <Field label="Last name">
+              <Input
+                value={addingAdmin.lastName}
+                onChange={(e) => setAddingAdmin({ ...addingAdmin, lastName: e.target.value })}
+              />
+            </Field>
+
+            <Field label="Mobile (optional)" hint="For the store's own records">
+              <Input
+                type="tel"
+                value={addingAdmin.phone}
+                onChange={(e) => setAddingAdmin({ ...addingAdmin, phone: e.target.value })}
+              />
+            </Field>
+
+            <Field label="Role" hint="Administrator runs the store; Staff is narrower">
+              <Select
+                value={addingAdmin.role}
+                onChange={(e) =>
+                  setAddingAdmin({
+                    ...addingAdmin,
+                    role: e.target.value as NewStoreAdmin['role'],
+                  })
+                }
+              >
+                <option value="TENANT_ADMIN">Administrator</option>
+                <option value="STAFF">Staff</option>
+              </Select>
+            </Field>
+          </FormGrid>
+
+          {/* Said before the button is pressed. The owner is a separate thing,
+              and an operator reaching for this to "make someone the owner"
+              should find out here rather than from the result. */}
+          <p className="mt-4 text-xs text-ink-500">
+            This does not make them the owner. There is one owner per store, created with it —
+            use Owner password if that is the account that needs recovering.
+          </p>
+
+          <FormError error={addAdmin.error} />
+        </Modal>
+      )}
+
+      {adminIssued && (
+        <Modal
+          title={adminIssued.temporaryPassword ? 'Account created' : 'Access granted'}
+          onClose={() => setAdminIssued(null)}
+          footer={<PrimaryButton onClick={() => setAdminIssued(null)}>Done</PrimaryButton>}
+        >
+          <p className="text-sm text-ink-700">
+            <strong className="text-ink-950">{adminIssued.email}</strong> is now{' '}
+            {adminIssued.role === 'TENANT_ADMIN' ? 'an administrator' : 'staff'} on{' '}
+            <strong className="text-ink-950">{adminIssued.storeName}</strong>.
+          </p>
+
+          {adminIssued.temporaryPassword ? (
+            <>
+              <p className="mt-3 text-sm text-ink-700">
+                A new account was created for that address. This password is not stored, so this
+                is the only time it is shown — the invite email does not carry it either.
+              </p>
+
+              <div className="mt-4 flex items-center gap-3 rounded-card border border-ink-200 bg-ink-50 px-4 py-3">
+                <code className="select-all flex-1 break-all font-mono text-sm text-ink-950">
+                  {adminIssued.temporaryPassword}
+                </code>
+                <button
+                  type="button"
+                  onClick={() =>
+                    void navigator.clipboard.writeText(adminIssued.temporaryPassword as string)
+                  }
+                  className="shrink-0 text-xs text-ink-600 underline hover:text-ink-950"
+                >
+                  Copy
+                </button>
+              </div>
+
+              <p className="mt-4 text-xs text-ink-500">
+                Ask them to change it after signing in.
+              </p>
+            </>
+          ) : (
+            /* No password to show, and saying so is the point: an operator who
+               expected one would otherwise assume the invite failed. */
+            <p className="mt-3 rounded-card bg-ink-50 px-4 py-3 text-sm text-ink-700">
+              That address already had a platform login, so they keep the password they use for
+              their other stores. Nothing has been reset.
+            </p>
+          )}
         </Modal>
       )}
 

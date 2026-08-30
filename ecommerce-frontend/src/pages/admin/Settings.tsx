@@ -46,6 +46,13 @@ export default function Settings() {
     metaDescription: '',
     productDescription: '',
     isPublished: false,
+    email: '',
+    phone: '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    state: '',
+    postalCode: '',
   });
 
   useEffect(() => {
@@ -58,6 +65,13 @@ export default function Settings() {
       metaDescription: s.metaDescription ?? '',
       productDescription: s.productDescription ?? '',
       isPublished: s.isPublished,
+      email: s.email,
+      phone: s.phone ?? '',
+      addressLine1: s.addressLine1 ?? '',
+      addressLine2: s.addressLine2 ?? '',
+      city: s.city ?? '',
+      state: s.state ?? '',
+      postalCode: s.postalCode ?? '',
     });
   }, [store.data]);
 
@@ -80,6 +94,20 @@ export default function Settings() {
            */
           productDescription: draft.productDescription,
           isPublished: draft.isPublished,
+          /**
+           * The contact block, sent raw for the same reason: emptying the phone
+           * or a line of the address is how a shop removes it, and `|| undefined`
+           * would make a cleared field impossible to save. The email is the one
+           * that cannot be emptied — the API refuses a blank one, because the
+           * storefront footer and every order email print it.
+           */
+          email: draft.email,
+          phone: draft.phone,
+          addressLine1: draft.addressLine1,
+          addressLine2: draft.addressLine2,
+          city: draft.city,
+          state: draft.state,
+          postalCode: draft.postalCode,
         }),
       ),
     onSuccess: () => {
@@ -105,6 +133,81 @@ export default function Settings() {
                 rows={2}
                 value={draft.description}
                 onChange={(e) => setDraft({ ...draft, description: e.target.value })}
+              />
+            </Field>
+          </FormGrid>
+        </Card>
+
+        {/* Where a customer writes when something goes wrong. Its own card
+            rather than more fields under "Store details", because these are
+            printed in three places a shopkeeper can point at — the footer of
+            every storefront page, the foot of every order email, and the top of
+            an invoice — and the hints say so. */}
+        <Card title="Contact details">
+          <p className="-mt-2 mb-4 text-sm text-ink-500">
+            Shown in your storefront footer, at the foot of every email you send, and on
+            invoices unless you override them under Invoicing below.
+          </p>
+
+          <FormGrid>
+            <Field
+              label="Contact email"
+              hint="Where shoppers reply. Cannot be empty — it is printed on every order email."
+            >
+              <Input
+                type="email"
+                autoComplete="email"
+                value={draft.email}
+                onChange={(e) => setDraft({ ...draft, email: e.target.value })}
+              />
+            </Field>
+
+            <Field label="Mobile number" hint="Optional. Empty removes it everywhere.">
+              <Input
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                maxLength={20}
+                placeholder="+91 98400 11111"
+                value={draft.phone}
+                onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
+              />
+            </Field>
+
+            <Field label="Address" wide hint="Your trading address, used on invoices">
+              <Input
+                value={draft.addressLine1}
+                placeholder="Line 1"
+                onChange={(e) => setDraft({ ...draft, addressLine1: e.target.value })}
+              />
+            </Field>
+
+            <Field label="Address line 2" wide>
+              <Input
+                value={draft.addressLine2}
+                onChange={(e) => setDraft({ ...draft, addressLine2: e.target.value })}
+              />
+            </Field>
+
+            <Field label="City">
+              <Input
+                value={draft.city}
+                onChange={(e) => setDraft({ ...draft, city: e.target.value })}
+              />
+            </Field>
+
+            <Field label="State">
+              <Input
+                value={draft.state}
+                onChange={(e) => setDraft({ ...draft, state: e.target.value })}
+              />
+            </Field>
+
+            <Field label="Postcode">
+              <Input
+                value={draft.postalCode}
+                maxLength={12}
+                onChange={(e) => setDraft({ ...draft, postalCode: e.target.value })}
               />
             </Field>
           </FormGrid>
@@ -340,16 +443,24 @@ function Invoicing() {
           />
         </Field>
 
-        <Field label="Billing email">
+        <Field
+          label="Billing email"
+          hint="Empty uses your contact email above"
+        >
           <Input
+            type="email"
+            autoComplete="off"
             value={draft.email}
             placeholder={effective?.email ?? ''}
             onChange={(e) => set('email', e.target.value)}
           />
         </Field>
 
-        <Field label="Billing phone">
+        <Field label="Billing mobile" hint="Empty uses your contact number above">
           <Input
+            type="tel"
+            inputMode="tel"
+            maxLength={20}
             value={draft.phone}
             placeholder={effective?.phone ?? ''}
             onChange={(e) => set('phone', e.target.value)}
@@ -387,6 +498,20 @@ function Invoicing() {
           ) : (
             <p className="mt-1 text-xs text-ink-500">
               No GSTIN — tax is printed as a single line rather than split into CGST and SGST.
+            </p>
+          )}
+
+          {/* The contact line, which the invoice prints under the address. It
+              was missing here, so an admin who typed a billing email had no way
+              to tell whether it had taken — the panel showed the same three
+              lines before and after the save. */}
+          {effective.email || effective.phone ? (
+            <p className="mt-1 text-sm text-ink-700">
+              {[effective.email, effective.phone].filter(Boolean).join('  ·  ')}
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-ink-500">
+              No contact details — your invoices print no email or phone number.
             </p>
           )}
         </div>

@@ -23,6 +23,28 @@ export default {
           600: '#5F5A50', 500: '#77726A', 400: '#948F86', 300: '#B0ABA1',
           200: '#CFCAC0', 100: '#E5E1D8', 50: '#F7F5F0',
         },
+        /**
+         * The platform's own green — fixed hex, never a tenant CSS variable.
+         *
+         * `brand` above is whatever store was last loaded in the tab, which is
+         * right for a storefront and wrong for the marketing page and the staff
+         * console: those belong to the platform and must not change colour
+         * because somebody visited a shop first. Same reasoning as
+         * features/platform/brand.tsx, which is why the two agree — `leaf-800`
+         * is exactly the `--brand-primary` default.
+         *
+         * Which step to reach for, since a green that cannot be read is not a
+         * brand colour either. Contrast against white:
+         *   500  1.9:1 — fills and washes only, never type
+         *   600  3.2:1 — large display type (24px+) and icons, not body text
+         *   700  4.7:1 — body text, and white type on it as a button fill
+         *   800  6.9:1 — headings and anything small
+         */
+        leaf: {
+          950: '#052E16', 900: '#14532D', 800: '#166534', 700: '#15803D',
+          600: '#16A34A', 500: '#22C55E', 400: '#4ADE80', 300: '#86EFAC',
+          200: '#BBF7D0', 100: '#DCFCE7', 50: '#F0FDF4',
+        },
       },
       fontFamily: {
         sans: ['var(--font-body)', 'Inter', 'system-ui', 'sans-serif'],
@@ -57,12 +79,28 @@ export default {
         'glow-sm': '0 1px 2px rgb(22 101 52 / 0.16)',
         /** An amber cast, for the secondary's own highlights. */
         'glow-amber': '0 1px 2px rgb(180 118 12 / 0.10), 0 10px 24px -8px rgb(245 165 36 / 0.30)',
+        /**
+         * The marketing page's lighter green cast. Named `glow-leaf` and not
+         * `leaf`, for the reason spelled out above `glow`: a boxShadow key that
+         * shares a name with a colour is swallowed by `shadow-<colour>`.
+         */
+        'glow-leaf': '0 1px 2px rgb(21 128 61 / 0.10), 0 12px 28px -8px rgb(34 197 94 / 0.32)',
+        'glow-leaf-lg': '0 2px 4px rgb(21 128 61 / 0.10), 0 24px 48px -12px rgb(34 197 94 / 0.36)',
       },
       backgroundImage: {
         /** The page wash behind both consoles: a hint of green, then nothing. */
         'brand-wash':
           'radial-gradient(60rem 32rem at 12% -8%, rgb(22 101 52 / 0.07), transparent 60%),' +
           'radial-gradient(44rem 26rem at 92% 0%, rgb(245 165 36 / 0.08), transparent 60%)',
+        /**
+         * The marketing hero's ground: mint from the top left, a paler green
+         * from the right. Light enough that the white cards on top of it still
+         * read as raised rather than as holes.
+         */
+        'leaf-wash':
+          'radial-gradient(70rem 40rem at 8% -12%, rgb(34 197 94 / 0.12), transparent 62%),' +
+          'radial-gradient(52rem 32rem at 96% -4%, rgb(134 239 172 / 0.20), transparent 60%),' +
+          'linear-gradient(180deg, rgb(240 253 244 / 0.85), rgb(255 255 255 / 0) 70%)',
       },
       keyframes: {
         'fade-in': { from: { opacity: '0' }, to: { opacity: '1' } },

@@ -161,7 +161,15 @@ export default function OrderDetail() {
       status: string;
     }) =>
       unwrap<Shipment>(
-        apiClient.put(`/orders/${id}/shipments/${patch.id}`, {
+        /**
+         * PATCH, not PUT.
+         *
+         * The route is `@Patch(':id')` and `UpdateShipmentDto` is four optional
+         * fields — a partial update, which is what this form sends. PUT matched
+         * no route at all, so every save came back "Cannot PUT /api/v1/orders/
+         * …/shipments/…" and the parcel silently never changed.
+         */
+        apiClient.patch(`/orders/${id}/shipments/${patch.id}`, {
           provider: patch.provider,
           trackingNumber: patch.trackingNumber,
           // Sent raw, empty included: the API reads an empty string as "derive

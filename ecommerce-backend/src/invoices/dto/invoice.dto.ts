@@ -1,5 +1,13 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, Matches, MaxLength, ValidateIf } from 'class-validator';
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  Length,
+  Matches,
+  MaxLength,
+  ValidateIf,
+} from 'class-validator';
 
 /**
  * A GSTIN is 15 characters with a fixed shape: two state-code digits, a
@@ -50,8 +58,37 @@ export class UpdateInvoiceSettingsDto {
   @IsOptional() @IsString() @MaxLength(80) state?: string;
 
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(12) postalCode?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(200) email?: string;
-  @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) phone?: string;
+
+  /**
+   * Checked as an address rather than taken as free text.
+   *
+   * This one is printed on a tax document and is where a buyer's accounts
+   * department writes when they query it. It used to be a bare `@IsString()`,
+   * which accepted "accouns@" and put it on every invoice the shop issued until
+   * somebody noticed the replies were not arriving.
+   *
+   * `ValidateIf` skips the check for the empty string, which is how the form
+   * removes an override and restores the store's own address — the same shape
+   * the GSTIN and PAN fields above use.
+   */
+  @ApiPropertyOptional({ description: 'Billing address for invoices. Empty to use the store email.' })
+  @IsOptional()
+  @ValidateIf((_o, value) => value !== '')
+  @IsEmail({}, { message: 'Enter a valid email address, or leave it empty to use your store email.' })
+  @MaxLength(200)
+  email?: string;
+
+  /**
+   * Five to twenty characters, matching what checkout accepts from a shopper
+   * and what the customer record allows. Forty was this field's own number and
+   * nothing else's; a number that long is a typo rather than a phone number.
+   */
+  @ApiPropertyOptional({ description: 'Billing number for invoices. Empty to use the store phone.' })
+  @IsOptional()
+  @ValidateIf((_o, value) => value !== '')
+  @IsString()
+  @Length(5, 20, { message: 'A phone number is between 5 and 20 characters.' })
+  phone?: string;
 
   @ApiPropertyOptional({ description: 'Prefixed to the order number, e.g. INV-' })
   @IsOptional() @IsString() @MaxLength(12) prefix?: string;

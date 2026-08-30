@@ -73,6 +73,19 @@ export interface EditableTheme {
   metaDescription: string | null;
   productDescription: string | null;
   isPublished: boolean;
+  /**
+   * How a customer reaches the shop. The email is printed in the storefront
+   * footer and at the foot of every order email, so it is never null; the rest
+   * are optional, and the invoice falls back to them when the invoicing form is
+   * left blank.
+   */
+  email: string;
+  phone: string | null;
+  addressLine1: string | null;
+  addressLine2: string | null;
+  city: string | null;
+  state: string | null;
+  postalCode: string | null;
   template: { id: string; slug: string; name: string } | null;
   theme: {
     primaryColor: string;

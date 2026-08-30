@@ -101,6 +101,29 @@ export interface AuditRow {
 const paged = <T>(promise: Promise<{ data: { data: T[]; meta: PaginationMeta } }>) =>
   promise.then((r) => ({ items: r.data.data, meta: r.data.meta }));
 
+export interface ContactEnquiry {
+  name: string;
+  email: string;
+  phone?: string;
+  company?: string;
+  message: string;
+  /** Rendered off-screen and left empty by anyone using a browser. */
+  honeypot?: string;
+}
+
+/**
+ * The landing page's contact form.
+ *
+ * Public and unauthenticated, which is why it sits apart from `platformService`
+ * below — everything in there needs a super-admin token, and this needs none.
+ * The route is throttled to two a minute, so a rejection is a real answer and
+ * not something to retry behind the user's back.
+ */
+export const contactService = {
+  send: (enquiry: ContactEnquiry) =>
+    unwrap<{ sent: true }>(apiClient.post('/contact', enquiry)),
+};
+
 /** One store's numbers, the shape the platform console reads them in. */
 export interface StoreBreakdown {
   tenant: {
@@ -183,6 +206,32 @@ export const platformService = {
     unwrap<{ email: string; temporaryPassword: string; otherStores: number }>(
       apiClient.post(`/platform/tenants/${id}/owner-password`, {}),
     ),
+
+  /**
+   * Another administrator for a store, added from the console.
+   *
+   * `temporaryPassword` is null when the address already had an account: they
+   * keep the password they use for their other stores, and the console must not
+   * offer to show one that was never issued.
+   */
+  addStoreAdmin: (
+    id: string,
+    payload: {
+      email: string;
+      firstName: string;
+      lastName: string;
+      phone?: string;
+      role?: 'TENANT_ADMIN' | 'STAFF';
+    },
+  ) =>
+    unwrap<{
+      id: string;
+      email: string;
+      firstName: string;
+      lastName: string;
+      role: 'TENANT_ADMIN' | 'STAFF';
+      temporaryPassword: string | null;
+    }>(apiClient.post(`/platform/tenants/${id}/admins`, payload)),
 
   plans: () => unwrap<PlatformPlan[]>(apiClient.get('/platform/plans')),
 
