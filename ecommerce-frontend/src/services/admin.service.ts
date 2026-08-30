@@ -61,7 +61,21 @@ export const couponService = {
   update: (id: string, payload: Record<string, unknown>) =>
     unwrap<Coupon>(apiClient.put(`/coupons/${id}`, payload)),
 
-  deactivate: (id: string) => unwrap<Coupon>(apiClient.delete(`/coupons/${id}`)),
+  /**
+   * Switches a coupon on or off. Reversible, and what most days want: a
+   * campaign that has ended is switched off, not destroyed, because the orders
+   * it discounted are still being looked at.
+   */
+  setActive: (id: string, isActive: boolean) =>
+    unwrap<Coupon>(apiClient.patch(`/coupons/${id}/active`, { isActive })),
+
+  /**
+   * Gone for good. The API refuses with `COUPON_IN_USE` when the coupon has
+   * been redeemed, because deleting it would take the redemption record with
+   * it — so the console offers this and lets the server be the authority on
+   * whether it is allowed.
+   */
+  remove: (id: string) => apiClient.delete(`/coupons/${id}`),
 };
 
 export const shippingService = {

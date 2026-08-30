@@ -3,8 +3,10 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -13,7 +15,12 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CouponsService } from './coupons.service';
 import { RequirePermissions } from '../common/decorators';
 import { PERMISSIONS } from '../common/rbac/permissions';
-import { CouponQueryDto, CreateCouponDto, UpdateCouponDto } from './dto/coupon.dto';
+import {
+  CouponQueryDto,
+  CreateCouponDto,
+  SetCouponActiveDto,
+  UpdateCouponDto,
+} from './dto/coupon.dto';
 
 /**
  * Admin-only. Shoppers never browse coupons — they apply one to a cart, which
@@ -49,10 +56,36 @@ export class CouponsController {
     return this.coupons.update(id, dto);
   }
 
-  @Delete(':id')
+  /**
+   * On or off. The reversible control, and the one most days want.
+   *
+   * A body rather than two routes, so switching a coupon back on is the same
+   * call with a different value — an `/activate` and a `/deactivate` pair is
+   * two things to keep in step for no gain.
+   */
+  @Patch(':id/active')
   @RequirePermissions(PERMISSIONS.COUPONS_WRITE)
-  @ApiOperation({ summary: 'Deactivate a coupon (orders keep referencing it)' })
-  deactivate(@Param('id', ParseUUIDPipe) id: string) {
-    return this.coupons.deactivate(id);
+  @ApiOperation({ summary: 'Switch a coupon on or off; orders keep their record' })
+  setActive(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: SetCouponActiveDto,
+  ) {
+    return this.coupons.setActive(id, dto.isActive);
+  }
+
+  /**
+   * Gone for good, and only for a coupon nobody has redeemed.
+   *
+   * `DELETE` used to deactivate, which meant the console had no way to remove a
+   * coupon created by mistake and a list that filled up with typos. It now does
+   * what the verb says, and refuses with `COUPON_IN_USE` when carrying it out
+   * would damage the record of an order.
+   */
+  @Delete(':id')
+  @HttpCode(204)
+  @RequirePermissions(PERMISSIONS.COUPONS_WRITE)
+  @ApiOperation({ summary: 'Delete a coupon that has never been redeemed' })
+  remove(@Param('id', ParseUUIDPipe) id: string) {
+    return this.coupons.remove(id);
   }
 }

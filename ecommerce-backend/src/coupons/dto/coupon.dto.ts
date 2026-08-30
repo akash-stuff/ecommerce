@@ -1,4 +1,4 @@
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import {
   IsArray,
@@ -67,4 +67,16 @@ export class CouponQueryDto extends PaginationQueryDto {
 
 export class ApplyCouponDto {
   @IsString() @Length(3, 40) code!: string;
+}
+
+/**
+ * On or off, as a body rather than as two routes.
+ *
+ * Required, not optional: an absent flag on a route whose whole job is to set
+ * one would have to mean something, and every candidate meaning — toggle, or
+ * default to off — is a surprise waiting for whoever calls it next.
+ */
+export class SetCouponActiveDto {
+  @ApiProperty({ description: 'Whether shoppers may use this coupon' })
+  @IsBoolean() isActive!: boolean;
 }

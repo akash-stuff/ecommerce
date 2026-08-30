@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { Trash2 } from 'lucide-react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { couponService } from '@/services/admin.service';
-import { Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
+import { DangerButton, Page, PrimaryButton, SecondaryButton } from '@/components/admin/Page';
 import { DataTable, StatusBadge, type Column } from '@/components/admin/DataTable';
 import { Field, FormError, FormGrid, Input, Modal, Select } from '@/components/admin/Modal';
 import { formatMoney } from '@/utils/format';
@@ -39,6 +40,7 @@ export default function Coupons() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [draft, setDraft] = useState<Draft | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<Coupon | null>(null);
 
   const query = useQuery({
     queryKey: ['admin-coupons', page, search],
@@ -74,9 +76,24 @@ export default function Coupons() {
     },
   });
 
-  const deactivate = useMutation({
-    mutationFn: (id: string) => couponService.deactivate(id),
+  const setActive = useMutation({
+    onError: (e) => toastFromError(e),
+    mutationFn: ({ id, isActive }: { id: string; isActive: boolean }) =>
+      couponService.setActive(id, isActive),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['admin-coupons'] }),
+  });
+
+  const remove = useMutation({
+    // The API refuses a coupon that has been redeemed, and its reason names the
+    // number of orders — worth showing verbatim rather than replacing with
+    // something vaguer.
+    onError: (e) => toastFromError(e),
+    mutationFn: (id: string) => couponService.remove(id),
+    onSuccess: () => {
+      toast.saved('Coupon deleted');
+      setConfirmDelete(null);
+      queryClient.invalidateQueries({ queryKey: ['admin-coupons'] });
+    },
   });
 
   const columns: Column<Coupon>[] = [
@@ -127,14 +144,26 @@ export default function Coupons() {
           >
             Edit
           </button>
-          {c.isActive && (
-            <button
-              onClick={() => deactivate.mutate(c.id)}
-              className="text-xs text-red-600 underline"
-            >
-              Deactivate
-            </button>
-          )}
+          {/* Reversible, so it is a plain toggle rather than a red one. A
+              coupon switched off by mistake is switched back on. */}
+          <button
+            onClick={() => setActive.mutate({ id: c.id, isActive: !c.isActive })}
+            disabled={setActive.isPending}
+            className="text-xs underline disabled:opacity-40"
+          >
+            {c.isActive ? 'Switch off' : 'Switch on'}
+          </button>
+
+          {/* Last, and the only red one — the same shape every other list on
+              the platform uses for the destructive action. */}
+          <button
+            type="button"
+            onClick={() => setConfirmDelete(c)}
+            aria-label={`Delete ${c.code}`}
+            className="rounded p-1 text-ink-400 transition-colors hover:bg-red-50 hover:text-red-600"
+          >
+            <Trash2 size={14} />
+          </button>
         </span>
       ),
       className: 'text-right',
@@ -268,6 +297,40 @@ export default function Coupons() {
           </FormGrid>
 
           <FormError error={save.error} />
+        </Modal>
+      )}
+
+      {/* A second step, because this one cannot be undone — and because the
+          server may refuse it. The dialog names the alternative up front so
+          somebody whose coupon has been redeemed does not have to be told no
+          before learning what to do instead. */}
+      {confirmDelete && (
+        <Modal
+          title={`Delete ${confirmDelete.code}?`}
+          onClose={() => setConfirmDelete(null)}
+          footer={
+            <>
+              <SecondaryButton onClick={() => setConfirmDelete(null)}>Keep it</SecondaryButton>
+              <DangerButton
+                disabled={remove.isPending}
+                onClick={() => remove.mutate(confirmDelete.id)}
+              >
+                {remove.isPending ? 'Deleting…' : 'Delete coupon'}
+              </DangerButton>
+            </>
+          }
+        >
+          <p className="text-sm text-ink-700">
+            This removes the coupon for good. Anyone who types{' '}
+            <span className="font-mono text-ink-950">{confirmDelete.code}</span> at checkout will
+            be told it is not a valid code.
+          </p>
+          <p className="mt-3 text-sm text-ink-500">
+            A coupon that has already been redeemed cannot be deleted — that would take the
+            record of who used it with it. Switch it off instead: shoppers stop being able to
+            use it, and the orders that did keep their discount.
+          </p>
+          <FormError error={remove.error} />
         </Modal>
       )}
     </Page>

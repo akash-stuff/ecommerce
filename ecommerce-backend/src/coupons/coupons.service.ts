@@ -93,10 +93,58 @@ export class CouponsService {
     });
   }
 
-  /** Deactivated, never deleted: past orders reference the coupon they used. */
-  async deactivate(id: string) {
+  /**
+   * Switches a coupon off, or back on.
+   *
+   * The everyday control, and the reversible one: a campaign that has ended is
+   * switched off, not destroyed, because the orders it discounted are still
+   * being looked at.
+   */
+  async setActive(id: string, isActive: boolean) {
     await this.findOne(id);
-    return this.prisma.db.coupon.update({ where: { id }, data: { isActive: false } });
+    return this.prisma.db.coupon.update({ where: { id }, data: { isActive } });
+  }
+
+  /**
+   * Removes a coupon for good — but only one that has never been redeemed.
+   *
+   * A used coupon is part of the record of what somebody paid. Deleting one
+   * would cascade its `CouponUsage` rows away, taking with them the per-customer
+   * redemption counts that make "one per customer" mean anything, and null the
+   * `couponId` on every order that used it. The orders would survive — they
+   * snapshot `couponCode` as text, deliberately — but the trail of who redeemed
+   * what would not, and it is not recoverable.
+   *
+   * So the check is on redemptions rather than on age or status: a typo created
+   * five minutes ago is deleted without ceremony, and anything a customer has
+   * actually used is refused with the alternative named. The caller is told
+   * which case it is, so the console can offer the right button instead of
+   * presenting a failure.
+   */
+  async remove(id: string): Promise<void> {
+    const coupon = await this.findOne(id);
+
+    /**
+     * Counted from the usage table rather than read off `Coupon.usageCount`.
+     *
+     * The counter is maintained by the redemption path; the rows are the record.
+     * If the two ever disagree, refusing the delete is the safe way to be wrong.
+     */
+    const redemptions = await this.prisma.db.couponUsage.count({
+      where: { couponId: id },
+    });
+
+    if (redemptions > 0) {
+      throw new ConflictException({
+        message:
+          `${coupon.code} has been used on ${redemptions} ` +
+          `${redemptions === 1 ? 'order' : 'orders'} and cannot be deleted. ` +
+          'Switch it off instead — the orders that used it keep their record.',
+        code: 'COUPON_IN_USE',
+      });
+    }
+
+    await this.prisma.db.coupon.delete({ where: { id } });
   }
 
   // --- Validation ------------------------------------------------------------
