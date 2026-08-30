@@ -49,6 +49,22 @@ export function escapeHtml(value: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/**
+ * The colour maths now lives in `common/colour.ts`, because the invoice needs
+ * the same contrast rules and two copies of a threshold drift apart. Re-exported
+ * here so the email layer still reads as one theme.
+ */
+export {
+  DEFAULT_BRAND,
+  buttonFill,
+  contrast,
+  darken,
+  edgeOf,
+  inkOn,
+  mix,
+  safeHex,
+} from '../common/colour';
+
 // --- Palette -----------------------------------------------------------------
 
 /**
@@ -82,9 +98,6 @@ export const INK = {
   PAGE: '#EFEBE3',
 } as const;
 
-/** Mirrors `brand-defaults.ts`; imported rather than duplicated at the call site. */
-export const DEFAULT_BRAND = '#166534';
-
 export const SANS =
   "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Helvetica,Arial,sans-serif";
 
@@ -103,98 +116,6 @@ export const CARD_WIDTH = 600;
 export const GUTTER = 40;
 
 // --- Guards ------------------------------------------------------------------
-
-/**
- * A six-digit hex, or the platform default.
- *
- * Six digits exactly, and not the looser `{3,8}`: a 3- or 4-digit hex is
- * unreliable in an Outlook `bgcolor` attribute and in a VML `fillcolor`, and an
- * 8-digit one carries an alpha channel that no mail client supports — it would
- * render as a silent transparency bug rather than as an error.
- *
- * This is the structural half of the CSS-injection defence. The colour reaches
- * three places that `escapeHtml` cannot make safe — a `bgcolor` attribute, an
- * inline `background-color`, and a VML `fillcolor` — so it is *validated*
- * rather than escaped. Loosen this and the hole reopens.
- */
-export function safeHex(input?: string | null): string {
-  const value = (input ?? '').trim();
-  return /^#[0-9a-fA-F]{6}$/.test(value) ? value.toUpperCase() : DEFAULT_BRAND;
-}
-
-/** Relative luminance, per WCAG 2.1. */
-function luminance(hex: string): number {
-  const channel = (start: number): number => {
-    const v = parseInt(hex.slice(start, start + 2), 16) / 255;
-    return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
-  };
-  return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
-}
-
-/** Contrast ratio between two six-digit hex colours. */
-export function contrast(a: string, b: string): number {
-  const [light, dark] = [luminance(a), luminance(b)].sort((x, y) => y - x);
-  return (light + 0.05) / (dark + 0.05);
-}
-
-/**
- * The ink to set on a tenant's colour.
- *
- * Computed rather than assumed white. A forest-green store gets white type and
- * a pale-pink one gets near-black, automatically — which is the whole reason a
- * band filled with an arbitrary tenant hex is safe to put type on at all.
- */
-export function inkOn(fill: string): string {
-  return contrast(fill, '#FFFFFF') >= contrast(fill, INK.STRONG)
-    ? '#FFFFFF'
-    : INK.STRONG;
-}
-
-/**
- * The button fill: the tenant's colour, darkened until white type sits legibly
- * on it.
- *
- * Darkened rather than swapped for black, for a reason that is not obvious. A
- * near-black fill is exactly the pair Gmail's forced inversion mangles — it
- * flips the fill to near-white and may or may not flip the label with it, so
- * half the time a white-label store ships an invisible call to action. A
- * saturated mid-tone is what the heuristics leave alone. Stepping the lightness
- * down keeps the button recognisably the store's colour while getting it into
- * that band.
- */
-export function buttonFill(brand: string): string {
-  let fill = safeHex(brand);
-
-  for (let step = 0; step < 24 && contrast(fill, '#FFFFFF') < 4.5; step += 1) {
-    fill = darken(fill, 0.06);
-  }
-
-  // A colour so pale that twenty-four steps did not reach 4.5:1 is not a button
-  // fill; ink is. Rare, and better than an unreadable label.
-  return contrast(fill, '#FFFFFF') >= 4.5 ? fill : INK.STRONG;
-}
-
-/** Multiplies each channel toward black. */
-function darken(hex: string, amount: number): string {
-  const channel = (start: number): string => {
-    const v = parseInt(hex.slice(start, start + 2), 16);
-    return Math.max(0, Math.round(v * (1 - amount)))
-      .toString(16)
-      .padStart(2, '0');
-  };
-  return `#${channel(1)}${channel(3)}${channel(5)}`.toUpperCase();
-}
-
-/**
- * A hairline a shade darker than the band it sits under.
- *
- * Unconditional. On a saturated brand it reads as a deliberate shadow line; on
- * a near-white brand it is the only thing separating the band from the card, and
- * without it such a store's header simply vanishes.
- */
-export function edgeOf(brand: string): string {
-  return darken(safeHex(brand), 0.15);
-}
 
 /**
  * A URL safe to place in `href` or `src`, or null.

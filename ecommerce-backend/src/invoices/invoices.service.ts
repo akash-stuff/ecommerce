@@ -2,6 +2,8 @@ import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/commo
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { AuditService } from '../audit/audit.service';
+import { ConfigService } from '@nestjs/config';
+import { BRAND_DEFAULTS } from '../theme/brand-defaults';
 import { RequestContextStore } from '../common/context/request-context';
 import { UpdateInvoiceSettingsDto } from './dto/invoice.dto';
 import type {
@@ -11,6 +13,7 @@ import type {
   InvoiceTaxLine,
 } from './invoice-data';
 import { renderInvoicePdf } from './invoice-pdf';
+import { loadStoreLogo } from './store-logo';
 
 /** What an invoice is rendered from, once the order and the store are known. */
 type OrderForInvoice = Prisma.OrderGetPayload<{
@@ -55,6 +58,7 @@ export class InvoicesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly config: ConfigService,
   ) {}
 
   // --- Settings --------------------------------------------------------------
@@ -187,6 +191,21 @@ export class InvoicesService {
     const invoiceNumber = `${store.invoicePrefix}${order.orderNumber}`;
     const isPaid = order.paymentStatus === 'PAID';
 
+    /**
+     * The mark, as bytes.
+     *
+     * Loaded here rather than in the renderer, and never as a URL: see
+     * `store-logo.ts` for why the fetch is kept out of the drawing code and
+     * what it refuses. Null is ordinary — no logo, an unreachable host, a file
+     * that is not a PNG or JPEG — and the invoice prints the business name
+     * instead.
+     */
+    const logo = await loadStoreLogo({
+      url: store.theme?.logoUrl,
+      publicBaseUrl: this.config.get<string>('storage.publicBaseUrl'),
+      localDir: this.config.get<string>('storage.localDir'),
+    });
+
     const data: InvoiceData = {
       invoiceNumber,
       orderNumber: order.orderNumber,
@@ -217,6 +236,14 @@ export class InvoicesService {
       grandTotal: order.grandTotal.toFixed(2),
       couponCode: order.couponCode,
       notes: store.invoiceNotes,
+
+      brand: {
+        // Validated again inside the renderer; passed as stored so there is one
+        // place that decides what a bad value falls back to.
+        primary: store.theme?.primaryColor ?? BRAND_DEFAULTS.PRIMARY,
+        secondary: store.theme?.secondaryColor ?? BRAND_DEFAULTS.SECONDARY,
+        logo,
+      },
     };
 
     return {
@@ -228,7 +255,12 @@ export class InvoicesService {
   }
 
   private async requireStore() {
-    const store = await this.prisma.db.store.findFirst();
+    const store = await this.prisma.db.store.findFirst({
+      // The theme rides along: an invoice is dressed in the store's own two
+      // colours and carries its mark, and fetching it separately would be a
+      // second query on a path that already does one.
+      include: { theme: { select: { primaryColor: true, secondaryColor: true, logoUrl: true } } },
+    });
     if (!store) {
       throw new NotFoundException({
         message: 'This tenant has no store yet.',
