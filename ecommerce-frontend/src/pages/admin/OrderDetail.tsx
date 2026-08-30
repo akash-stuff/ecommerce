@@ -352,7 +352,16 @@ export default function OrderDetail() {
           <section className="rounded-card border border-ink-100 bg-white p-5">
             <h2 className="text-sm font-medium text-ink-950">Parcels</h2>
             {(shipments.data ?? []).length === 0 ? (
-              <p className="mt-2 text-sm text-ink-500">Nothing dispatched yet.</p>
+              /**
+               * Says why, not just that there is nothing here.
+               *
+               * "Record dispatch" only appears once an order has been
+               * confirmed, so on a new order the courier and tracking fields
+               * are nowhere to be found and nothing on the screen explains
+               * that. An empty panel with no next step is where someone
+               * decides the feature is missing.
+               */
+              <p className="mt-2 text-sm text-ink-500">{dispatchHint(order.status)}</p>
             ) : (
               <ul className="mt-3 space-y-4 text-sm">
                 {shipments.data!.map((s) => (
@@ -606,6 +615,27 @@ export default function OrderDetail() {
       )}
     </Page>
   );
+}
+
+/**
+ * What to tell someone looking at a parcel list with nothing in it.
+ *
+ * The dispatch dialog — where the courier, the tracking number and the link
+ * live — is only offered between confirming an order and shipping it. Every
+ * other state needs a sentence saying so, or the courier fields simply appear
+ * not to exist.
+ */
+function dispatchHint(status: string): string {
+  if (status === 'PENDING') {
+    return 'Nothing dispatched yet. Confirm the order and “Record dispatch” appears above, where the courier and tracking number go.';
+  }
+  if (['CONFIRMED', 'PROCESSING', 'PACKED'].includes(status)) {
+    return 'Nothing dispatched yet. Use “Record dispatch” above to choose a courier and add the tracking number.';
+  }
+  if (['SHIPPED', 'DELIVERED'].includes(status)) {
+    return 'This order was moved on without a parcel being recorded, so the customer has no tracking to follow.';
+  }
+  return 'Nothing was dispatched.';
 }
 
 function Row({ label, value }: { label: string; value: string }) {
