@@ -172,6 +172,18 @@ export const platformService = {
   activateTenant: (id: string) =>
     unwrap<PlatformTenant>(apiClient.patch(`/platform/tenants/${id}/activate`, {})),
 
+  /**
+   * A new password for a store's owner, returned once and never again.
+   *
+   * `otherStores` is how many *other* stores the same login opens: a `User` is
+   * platform-level, so one person running three shops has one password for all
+   * three, and the console has to say so before the button is pressed.
+   */
+  resetOwnerPassword: (id: string) =>
+    unwrap<{ email: string; temporaryPassword: string; otherStores: number }>(
+      apiClient.post(`/platform/tenants/${id}/owner-password`, {}),
+    ),
+
   plans: () => unwrap<PlatformPlan[]>(apiClient.get('/platform/plans')),
 
   createPlan: (payload: Record<string, unknown>) =>

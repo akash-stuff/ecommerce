@@ -166,27 +166,23 @@ export default function Dashboard() {
               value={formatMoney(data.revenue.total)}
               change={data.revenue.changePercent}
               icon={IndianRupee}
-              tint="emerald"
             />
             <Stat
               label="Orders"
               value={String(data.orders.count)}
               change={percent(data.orders.previous, data.orders.count)}
               icon={ShoppingCart}
-              tint="sky"
             />
             <Stat
               label="Average order"
               value={formatMoney(data.orders.averageValue)}
               icon={Receipt}
-              tint="amber"
             />
             <Stat
               label="Customers"
               value={String(data.customers.total)}
               hint={`${data.customers.newInRange} new in this period`}
               icon={Users}
-              tint="violet"
             />
           </div>
 
@@ -321,44 +317,28 @@ function RevenueChart({ series }: { series: Dashboard['dailyRevenue'] }) {
   );
 }
 
-/**
- * A hue per metric, so the four tiles are told apart by shape as well as by
- * reading them.
- *
- * Written out rather than interpolated — `bg-${tint}-50` produces a class name
- * Tailwind's scanner never sees in the source, so the utility is not emitted
- * and the tile renders with no background at all.
- */
-const STAT_TINT = {
-  emerald: 'bg-emerald-50 text-emerald-600 ring-emerald-600/10',
-  sky: 'bg-sky-50 text-sky-600 ring-sky-600/10',
-  amber: 'bg-amber-50 text-amber-600 ring-amber-600/10',
-  violet: 'bg-violet-50 text-violet-600 ring-violet-600/10',
-} as const;
-
 function Stat({
   label,
   value,
   change,
   hint,
   icon: Icon,
-  tint,
 }: {
   label: string;
   value: string;
   change?: number | null;
   hint?: string;
   icon?: typeof ArrowUpRight;
-  tint?: keyof typeof STAT_TINT;
 }) {
   return (
     <div className="rounded-card border border-ink-100 bg-white p-5 shadow-card transition-shadow hover:shadow-raised">
       <div className="flex items-start justify-between gap-3">
         <p className="text-xs uppercase tracking-wide text-ink-500">{label}</p>
-        {Icon && tint && (
-          <span
-            className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-card ring-1 ring-inset ${STAT_TINT[tint]}`}
-          >
+        {/* The store's own colour on every tile. Four different hues were tried
+            and made the row read as four unrelated widgets rather than one
+            summary. */}
+        {Icon && (
+          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-card bg-brand/[0.08] text-brand ring-1 ring-inset ring-brand/10">
             <Icon size={15} strokeWidth={2} />
           </span>
         )}

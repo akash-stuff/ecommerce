@@ -61,6 +61,17 @@ export default function Tenants() {
   const [search, setSearch] = useState('');
   const [creating, setCreating] = useState<NewTenant | null>(null);
   const [suspending, setSuspending] = useState<PlatformTenant | null>(null);
+  /** The store whose owner password is about to be replaced, or null. */
+  const [resetting, setResetting] = useState<PlatformTenant | null>(null);
+  /**
+   * The password that was just issued. Held only in this component's state:
+   * it is shown once, and closing the dialog is the only copy anyone gets.
+   */
+  const [issued, setIssued] = useState<{
+    email: string;
+    temporaryPassword: string;
+    otherStores: number;
+  } | null>(null);
   const [editing, setEditing] = useState<EditTenant | null>(null);
   const [deleting, setDeleting] = useState<PlatformTenant | null>(null);
   // Typed back to confirm a delete. Kept out of `deleting` so closing the
@@ -175,6 +186,15 @@ export default function Tenants() {
     },
   });
 
+  const resetOwner = useMutation({
+    onError: (e) => toastFromError(e),
+    mutationFn: (id: string) => platformService.resetOwnerPassword(id),
+    onSuccess: (result) => {
+      setResetting(null);
+      setIssued(result);
+    },
+  });
+
   const activate = useMutation({
     mutationFn: (id: string) => platformService.activateTenant(id),
     onSuccess: refresh,
@@ -256,6 +276,14 @@ export default function Tenants() {
               Activate
             </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => setResetting(t)}
+            className="text-xs underline"
+          >
+            Owner password
+          </button>
 
           {/* Last, and the only red one. Suspension is the reversible action
               and should be the easier one to reach. */}
@@ -595,6 +623,82 @@ export default function Tenants() {
           </div>
 
           <FormError error={remove.error} />
+        </Modal>
+      )}
+
+      {/* Two steps, because this cannot be undone: the old password is gone the
+          moment it is replaced, and whoever was signed in is signed out. */}
+      {resetting && (
+        <Modal
+          title={`Reset the owner password for ${resetting.businessName}?`}
+          onClose={() => setResetting(null)}
+          footer={
+            <>
+              <SecondaryButton onClick={() => setResetting(null)}>Cancel</SecondaryButton>
+              <PrimaryButton
+                disabled={resetOwner.isPending}
+                onClick={() => resetOwner.mutate(resetting.id)}
+              >
+                {resetOwner.isPending ? 'Resetting…' : 'Reset password'}
+              </PrimaryButton>
+            </>
+          }
+        >
+          <p className="text-sm text-ink-700">
+            A new password is generated and shown to you once. Nothing is emailed — you pass it
+            on yourself.
+          </p>
+          <p className="mt-3 text-sm text-ink-700">
+            The owner&apos;s current password stops working immediately, and every device they
+            are signed in on is signed out.
+          </p>
+          <p className="mt-3 text-sm text-ink-500">
+            A sign-in belongs to a person, not to a store. If this owner runs other stores on the
+            platform, this is the password for those too.
+          </p>
+          <FormError error={resetOwner.error} />
+        </Modal>
+      )}
+
+      {/* Shown once. There is no second chance to read it, which the dialog
+          says rather than leaving someone to find out by closing it. */}
+      {issued && (
+        <Modal
+          title="New owner password"
+          onClose={() => setIssued(null)}
+          footer={<PrimaryButton onClick={() => setIssued(null)}>Done</PrimaryButton>}
+        >
+          <p className="text-sm text-ink-700">
+            Give this to <strong className="text-ink-950">{issued.email}</strong>. It is not
+            stored and not emailed, so this is the only time it is shown.
+          </p>
+
+          <div className="mt-4 flex items-center gap-3 rounded-card border border-ink-200 bg-ink-50 px-4 py-3">
+            {/* Selectable as one run: the next thing anyone does with this is
+                copy it. */}
+            <code className="select-all flex-1 break-all font-mono text-sm text-ink-950">
+              {issued.temporaryPassword}
+            </code>
+            <button
+              type="button"
+              onClick={() => void navigator.clipboard.writeText(issued.temporaryPassword)}
+              className="shrink-0 text-xs text-ink-600 underline hover:text-ink-950"
+            >
+              Copy
+            </button>
+          </div>
+
+          {issued.otherStores > 0 && (
+            <p className="mt-4 rounded-card bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              This login also opens {issued.otherStores} other{' '}
+              {issued.otherStores === 1 ? 'store' : 'stores'} on the platform. Their password has
+              changed too.
+            </p>
+          )}
+
+          <p className="mt-4 text-xs text-ink-500">
+            Ask them to change it after signing in.
+          </p>
         </Modal>
       )}
 

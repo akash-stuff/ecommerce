@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
@@ -69,5 +70,23 @@ export class TenantsController {
   @Patch(':id/activate')
   activate(@Param('id', ParseUUIDPipe) id: string) {
     return this.tenants.activate(id);
+  }
+
+  /**
+   * A new password for the store's owner, returned once.
+   *
+   * `POST` rather than `PATCH`: it is not an edit to a field, it mints a
+   * credential, and it must never be something a browser retries on its own.
+   *
+   * The password is in the response and nowhere else — not emailed, not stored.
+   * A store owner's password has no expiry, so mailing it would leave a working
+   * credential sitting in an inbox and in the notifications table, which is the
+   * same reason the staff invite carries none.
+   */
+  @Post(':id/owner-password')
+  @HttpCode(200)
+  @ApiOperation({ summary: "Reset the store owner's password; shown once" })
+  resetOwnerPassword(@Param('id', ParseUUIDPipe) id: string) {
+    return this.tenants.resetOwnerPassword(id);
   }
 }

@@ -14,6 +14,7 @@ import { TenantResolverService } from './tenant-resolver.service';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { bareAddress } from '../notifications/mail-address';
+import { generatePassword, hashPassword } from '../common/crypto/password';
 import {
   paginate,
   PaginationQueryDto,
@@ -420,6 +421,92 @@ export class TenantsService {
 
       return updated;
     });
+  }
+
+  /**
+   * Issues a new password for a store's owner.
+   *
+   * The platform console can create a store with an owner password, and until
+   * now could do nothing about it afterwards — an owner who lost theirs had to
+   * be dealt with by hand in the database. This is the same shape as the
+   * per-store staff reset, one level up.
+   *
+   * Two consequences are deliberately surfaced to the caller rather than hidden.
+   *
+   * A `User` is platform-level, not per-store: the same person may own several
+   * stores, and one login covers all of them. Resetting the password here
+   * changes it everywhere they sign in, which the console says out loud before
+   * anyone presses the button.
+   *
+   * Every live session is revoked. A reset is what someone does when they think
+   * a password is compromised, and leaving existing refresh tokens valid would
+   * mean the new password locked out only the rightful owner.
+   */
+  async resetOwnerPassword(id: string): Promise<{
+    email: string;
+    temporaryPassword: string;
+    otherStores: number;
+  }> {
+    const tenant = await this.prisma.runUnscoped((db) =>
+      db.tenant.findUnique({ where: { id }, select: { id: true, businessName: true } }),
+    );
+
+    if (!tenant) {
+      throw new NotFoundException({
+        message: 'That store does not exist.',
+        code: 'TENANT_NOT_FOUND',
+      });
+    }
+
+    const membership = await this.prisma.runUnscoped((db) =>
+      db.tenantUser.findFirst({
+        where: { tenantId: id, role: SystemRole.TENANT_OWNER },
+        select: { userId: true, user: { select: { email: true } } },
+        orderBy: { createdAt: 'asc' },
+      }),
+    );
+
+    if (!membership) {
+      throw new NotFoundException({
+        message: `${tenant.businessName} has no owner account to reset.`,
+        code: 'TENANT_OWNER_NOT_FOUND',
+      });
+    }
+
+    const temporaryPassword = generatePassword();
+    const passwordHash = await hashPassword(temporaryPassword);
+
+    // Counted before the write so the console can warn honestly about the blast
+    // radius of a shared login.
+    const otherStores = await this.prisma.runUnscoped((db) =>
+      db.tenantUser.count({ where: { userId: membership.userId, tenantId: { not: id } } }),
+    );
+
+    await this.prisma.runUnscoped(async (db) => {
+      await db.user.update({ where: { id: membership.userId }, data: { passwordHash } });
+
+      // Sessions minted under the old password are exactly what a reset is
+      // meant to end.
+      await db.refreshToken.updateMany({
+        where: { userId: membership.userId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+    });
+
+    void this.audit.record({
+      action: 'tenant.ownerPasswordReset',
+      entityType: 'Tenant',
+      entityId: id,
+      // The password itself is never recorded. `changes` is redacted anyway,
+      // and a credential in an audit row outlives the reason it was written.
+      changes: { businessName: tenant.businessName, email: membership.user.email },
+    });
+
+    this.logger.warn(
+      `Owner password reset for ${tenant.businessName} (${membership.user.email})`,
+    );
+
+    return { email: membership.user.email, temporaryPassword, otherStores };
   }
 
   async activate(id: string) {

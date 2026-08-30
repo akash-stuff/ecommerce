@@ -6,9 +6,8 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma, SystemRole } from '@prisma/client';
-import * as argon2 from 'argon2';
-import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { generatePassword, hashPassword } from '../common/crypto/password';
 import { RequestContextStore } from '../common/context/request-context';
 import { AuditService } from '../audit/audit.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -343,28 +342,4 @@ export class StaffService {
   }
 }
 
-/** The same argon2id parameters AuthService uses, so hashes stay comparable. */
-function hashPassword(password: string): Promise<string> {
-  return argon2.hash(password, {
-    type: argon2.argon2id,
-    memoryCost: 19_456,
-    timeCost: 2,
-    parallelism: 1,
-  });
-}
 
-/**
- * A temporary password that is awkward to mistype and impossible to guess.
- *
- * `randomBytes` rather than `Math.random`, because this is a credential. The
- * alphabet omits the characters that are read wrong out loud or off a screen —
- * O/0, I/l/1 — since the likeliest way this reaches its owner is somebody
- * reading it to them.
- */
-function generatePassword(length = 14): string {
-  const alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
-  const bytes = randomBytes(length);
-  let out = '';
-  for (let i = 0; i < length; i += 1) out += alphabet[bytes[i] % alphabet.length];
-  return out;
-}
