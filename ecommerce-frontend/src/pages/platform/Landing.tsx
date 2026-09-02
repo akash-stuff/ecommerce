@@ -51,7 +51,9 @@ import { contactService } from '@/services/platform.service';
  * ticket written in advance. Two consequences worth knowing before editing:
  * there is no `Pricing` nav item because plan prices are super-admin-only and
  * the link would go nowhere, and every call to action lands on a real
- * destination — `#contact` or `/login` — because there is no public sign-up.
+ * destination — `/register`, `#contact` or `/login`. "Get Started" goes to the
+ * application form, not to a sign-up: registering asks for a store, and a
+ * person at the platform decides it.
  */
 
 const NAV = [
@@ -323,9 +325,9 @@ function SiteHeader() {
           <Link to="/login" className={`hidden sm:inline-flex ${GHOST_BUTTON} !py-2.5`}>
             Sign in
           </Link>
-          <a href="#contact" className={`${PRIMARY_BUTTON} !py-2.5`}>
+          <Link to="/register" className={`${PRIMARY_BUTTON} !py-2.5`}>
             Get Started
-          </a>
+          </Link>
           <button
             type="button"
             onClick={() => setOpen((v) => !v)}
@@ -602,10 +604,10 @@ export default function Landing() {
                 </p>
 
                 <div className="mt-9 flex flex-wrap items-center gap-3">
-                  <a href="#contact" className={PRIMARY_BUTTON}>
+                  <Link to="/register" className={PRIMARY_BUTTON}>
                     Get Started Now
                     <ArrowRight size={15} />
-                  </a>
+                  </Link>
                   <a href="#how" className={GHOST_BUTTON}>
                     <Play size={14} className="fill-leaf-600 text-leaf-600" />
                     See How It Works
@@ -779,13 +781,13 @@ export default function Landing() {
                   the emails, the invoices and the packing slip all carry that shop's name, not
                   ours. All from one platform.
                 </p>
-                <a
-                  href="#contact"
+                <Link
+                  to="/register"
                   className="cta-on-dark mt-8 inline-flex items-center gap-2 rounded-full px-6 py-3 text-sm font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-leaf-900"
                 >
                   Get Started
                   <ArrowRight size={15} />
-                </a>
+                </Link>
               </div>
 
               <Frame shot={SHOTS.brand} edged={false} />

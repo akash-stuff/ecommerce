@@ -124,6 +124,54 @@ export const contactService = {
     unwrap<{ sent: true }>(apiClient.post('/contact', enquiry)),
 };
 
+export type StoreRequestStatus = 'PENDING' | 'APPROVED' | 'REJECTED' | 'DISCARDED';
+
+export interface StoreRequest {
+  id: string;
+  status: StoreRequestStatus;
+  businessName: string;
+  slug: string;
+  businessCategory: string | null;
+  message: string | null;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string | null;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+  /** The store it became, once approved. */
+  tenantId: string | null;
+  createdAt: string;
+  reviewedBy: { email: string; firstName: string; lastName: string } | null;
+}
+
+export interface StoreRegistration {
+  businessName: string;
+  slug: string;
+  businessCategory?: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone?: string;
+  password: string;
+  message?: string;
+  /** Rendered off-screen and left empty by anyone using a browser. */
+  honeypot?: string;
+}
+
+/**
+ * Registering for a store.
+ *
+ * Public and unauthenticated, so it sits with `contactService` rather than in
+ * `platformService` below — everything in there needs a super-admin token.
+ * The reply is `{ received: true }`, never a store: a registration is an
+ * application, and a person decides it.
+ */
+export const registerService = {
+  apply: (registration: StoreRegistration) =>
+    unwrap<{ received: true }>(apiClient.post('/store-requests', registration)),
+};
+
 /** One store's numbers, the shape the platform console reads them in. */
 export interface StoreBreakdown {
   tenant: {
@@ -232,6 +280,26 @@ export const platformService = {
       role: 'TENANT_ADMIN' | 'STAFF';
       temporaryPassword: string | null;
     }>(apiClient.post(`/platform/tenants/${id}/admins`, payload)),
+
+  /** The registration queue, oldest pending first. */
+  storeRequests: (params: { page?: number; limit?: number; search?: string; status?: string }) =>
+    paged<StoreRequest>(apiClient.get('/platform/store-requests', { params })),
+
+  /**
+   * Approving provisions the store, so it is a POST and never a retry.
+   *
+   * The applicant signs in with the password they chose when they registered —
+   * nothing is issued here and nothing is shown once, which is why this returns
+   * the updated application rather than a credential.
+   */
+  approveStoreRequest: (id: string, payload: { planId?: string; templateId?: string }) =>
+    unwrap<StoreRequest>(apiClient.post(`/platform/store-requests/${id}/approve`, payload)),
+
+  rejectStoreRequest: (id: string, reason: string) =>
+    unwrap<StoreRequest>(apiClient.post(`/platform/store-requests/${id}/reject`, { reason })),
+
+  discardStoreRequest: (id: string) =>
+    unwrap<StoreRequest>(apiClient.post(`/platform/store-requests/${id}/discard`, {})),
 
   plans: () => unwrap<PlatformPlan[]>(apiClient.get('/platform/plans')),
 

@@ -35,6 +35,7 @@ import { PagesModule } from './pages/pages.module';
 import { BannersModule } from './banners/banners.module';
 import { NewsletterModule } from './newsletter/newsletter.module';
 import { ContactModule } from './contact/contact.module';
+import { StoreRequestsModule } from './store-requests/store-requests.module';
 import { StaffModule } from './staff/staff.module';
 import { MediaModule } from './media/media.module';
 import { InvoicesModule } from './invoices/invoices.module';
@@ -76,6 +77,7 @@ import { PermissionsGuard } from './common/guards/permissions.guard';
     BannersModule,
     NewsletterModule,
     ContactModule,
+    StoreRequestsModule,
     StaffModule,
     MediaModule,
     InvoicesModule,

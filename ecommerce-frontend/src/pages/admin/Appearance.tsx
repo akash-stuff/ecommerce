@@ -241,7 +241,7 @@ export default function Appearance() {
                 <ImageUpload
                   label="logo"
                   purpose="theme"
-                  aspect="wide"
+                  aspect="logo"
                   value={draft.logoUrl}
                   onChange={(url) => set('logoUrl', url)}
                 />
@@ -276,6 +276,7 @@ export default function Appearance() {
                 <ImageUpload
                   label="favicon"
                   purpose="theme"
+                  aspect="favicon"
                   value={draft.faviconUrl}
                   onChange={(url) => set('faviconUrl', url)}
                 />
@@ -317,7 +318,7 @@ export default function Appearance() {
               <ImageUpload
                 label="background"
                 purpose="theme"
-                aspect="wide"
+                aspect="background"
                 value={draft.backgroundImageUrl}
                 onChange={(url) => set('backgroundImageUrl', url)}
               />
@@ -359,7 +360,7 @@ export default function Appearance() {
                 <ImageUpload
                   label="sign-in image"
                   purpose="theme"
-                  aspect="wide"
+                  aspect="page"
                   value={draft.loginImageUrl}
                   onChange={(url) => set('loginImageUrl', url)}
                 />

@@ -44,6 +44,8 @@ const AdminAnalytics = lazy(() => import('@/pages/admin/Analytics'));
 const AdminPages = lazy(() => import('@/pages/admin/Pages'));
 const PlatformOverview = lazy(() => import('@/pages/platform/Overview'));
 const PlatformTenants = lazy(() => import('@/pages/platform/Tenants'));
+const PlatformStoreRequests = lazy(() => import('@/pages/platform/StoreRequests'));
+const Register = lazy(() => import('@/pages/platform/Register'));
 const PlatformPlans = lazy(() => import('@/pages/platform/Plans'));
 const PlatformTemplates = lazy(() => import('@/pages/platform/Templates'));
 const PlatformAudit = lazy(() => import('@/pages/platform/AuditLog'));
@@ -120,6 +122,15 @@ export const router = createBrowserRouter([
     children: [{ index: true, element: wrap(<SignIn />) }],
   },
   { path: '/login', element: wrap(<Login />) },
+  /**
+   * Applying for a store, on the platform hostnames only.
+   *
+   * A tenant hostname must not answer here: `/register` on a shop's own address
+   * would read as "register as a customer of this shop", which is
+   * `/account/sign-in`, and the two are different products entirely. On a tenant
+   * host the storefront's `:slug` page claims the address instead.
+   */
+  ...(isAdminHost() ? [{ path: '/register', element: wrap(<Register />) }] : []),
   {
     path: '/admin',
     element: <RequireAuth roles={['TENANT_OWNER', 'TENANT_ADMIN', 'STAFF']} />,
@@ -164,6 +175,7 @@ export const router = createBrowserRouter([
         children: [
           { index: true, element: wrap(<PlatformOverview />) },
           { path: 'tenants', element: wrap(<PlatformTenants />) },
+          { path: 'applications', element: wrap(<PlatformStoreRequests />) },
           { path: 'plans', element: wrap(<PlatformPlans />) },
           { path: 'templates', element: wrap(<PlatformTemplates />) },
           { path: 'notifications', element: wrap(<PlatformNotifications />) },

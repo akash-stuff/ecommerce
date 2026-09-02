@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react';
 import { ArrowLeft, ArrowRight, ImagePlus, Link2, Loader2, Upload, X } from 'lucide-react';
 import { mediaService } from '@/services/admin.service';
+import { ASPECTS } from './ImageUpload';
+import { CropDialog } from './CropDialog';
 import type { ApiError } from '@/types/api';
 
 /**
@@ -25,6 +27,8 @@ export function ImageListUpload({
   const [dragging, setDragging] = useState(false);
   const [pasted, setPasted] = useState('');
   const [showUrl, setShowUrl] = useState(false);
+  /** Files waiting to be positioned. The head of it is in the dialog. */
+  const [queue, setQueue] = useState<File[]>([]);
 
   const add = (url: string) => {
     const trimmed = url.trim();
@@ -33,17 +37,45 @@ export function ImageListUpload({
     if (trimmed && !value.includes(trimmed)) onChange([...value, trimmed]);
   };
 
-  const pick = async (files: FileList | null) => {
+  /**
+   * Picked files are queued and positioned one at a time.
+   *
+   * Product tiles are square everywhere — the grid, the detail page, the cart —
+   * and a photograph off a phone is not, so something has to decide which part
+   * of it survives. Left to `object-cover` that decision is "the middle", which
+   * is where the subject of a photograph very often is not.
+   *
+   * One dialog per file is deliberately a little tedious for a batch of eight.
+   * The alternative is a centre crop nobody chose, and the tedium is the price
+   * of the shopkeeper seeing each tile before it goes live.
+   *
+   * A GIF skips the queue: drawing one through a canvas would flatten it to a
+   * single still frame.
+   */
+  const pick = (files: FileList | null) => {
     if (!files?.length) return;
     setError(null);
+
+    const picked = Array.from(files);
+    const animated = picked.filter((f) => f.type === 'image/gif');
+    const still = picked.filter((f) => f.type !== 'image/gif');
+
+    if (animated.length) void uploadAll(animated);
+    if (still.length) setQueue(still);
+    if (input.current) input.current.value = '';
+  };
+
+  /**
+   * Sequential, not Promise.all: a shopkeeper adding eight photos from a phone
+   * should not open eight concurrent uploads on a slow connection.
+   */
+  const uploadAll = async (files: File[]) => {
     setUploading(true);
     setProgress({ done: 0, total: files.length });
 
-    // Sequential, not Promise.all: a shopkeeper adding eight photos from a
-    // phone should not open eight concurrent uploads on a slow connection.
     const added: string[] = [];
     try {
-      for (const file of Array.from(files)) {
+      for (const file of files) {
         const stored = await mediaService.upload(file, 'product');
         added.push(stored.url);
         setProgress({ done: added.length, total: files.length });
@@ -56,7 +88,6 @@ export function ImageListUpload({
       if (added.length) onChange([...value, ...added.filter((u) => !value.includes(u))]);
       setUploading(false);
       setProgress(null);
-      if (input.current) input.current.value = '';
     }
   };
 
@@ -76,8 +107,30 @@ export function ImageListUpload({
         multiple
         accept="image/png,image/jpeg,image/gif,image/webp"
         className="sr-only"
-        onChange={(e) => void pick(e.target.files)}
+        onChange={(e) => pick(e.target.files)}
       />
+
+      {/* One at a time, off the head of the queue. Cancelling skips that file
+          and moves to the next rather than abandoning the whole batch — the
+          usual reason to cancel is one bad photo among several good ones. */}
+      {queue.length > 0 && (
+        <CropDialog
+          key={`${queue[0].name}-${queue.length}`}
+          file={queue[0]}
+          spec={{
+            ...ASPECTS.product,
+            hint:
+              queue.length > 1
+                ? `${ASPECTS.product.hint} ${queue.length} left to position.`
+                : ASPECTS.product.hint,
+          }}
+          onCancel={() => setQueue((q) => q.slice(1))}
+          onCropped={(cropped) => {
+            setQueue((q) => q.slice(1));
+            void uploadAll([cropped]);
+          }}
+        />
+      )}
 
       {value.length > 0 && (
         <ul className="mb-3 flex flex-wrap gap-3">
@@ -138,7 +191,7 @@ export function ImageListUpload({
         onDrop={(e) => {
           e.preventDefault();
           setDragging(false);
-          void pick(e.dataTransfer.files);
+          pick(e.dataTransfer.files);
         }}
         className={`flex flex-col items-center justify-center rounded-card border border-dashed px-4 py-6 text-center transition-colors ${
           dragging ? 'border-ink-950 bg-ink-50' : 'border-ink-200 bg-white hover:border-ink-300'

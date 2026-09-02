@@ -205,7 +205,20 @@ function Categories() {
               index === 0 ? 'lg:col-span-2 lg:row-span-1' : ''
             }`}
           >
-            <div className={index === 0 ? 'aspect-[16/9]' : 'aspect-[4/3]'}>
+            {/*
+              One shape for every tile, including the wide one.
+
+              The first tile used to be 16/9 and the rest 4/3, which meant the
+              *same* uploaded image was cropped two different ways depending on
+              where a category happened to sort — and the shopkeeper who
+              positioned it in the admin saw neither. The feature tile is still
+              the focal point; it earns that by spanning two columns and so
+              being drawn larger, not by being a different shape.
+
+              4/3 is what ASPECTS.category crops to, in components/admin/
+              ImageUpload. Change one and you must change both.
+            */}
+            <div className="aspect-[4/3]">
               {category.imageUrl ? (
                 <img
                   src={category.imageUrl}

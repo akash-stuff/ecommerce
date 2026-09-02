@@ -6,7 +6,6 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { SystemRole, TenantStatus } from '@prisma/client';
-import * as argon2 from 'argon2';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../common/prisma/prisma.service';
 import { templateLook } from '../theme/template-look';
@@ -29,6 +28,18 @@ import { AddStoreAdminDto, CreateTenantDto, UpdateTenantDto } from './dto/tenant
  * method is reachable only from @PlatformOnly() routes.
  */
 const TENANT_SORT_FIELDS = ['createdAt', 'businessName', 'slug', 'status'] as const;
+
+/**
+ * What `provision` needs: the create form's fields, but with the owner's
+ * password already hashed.
+ *
+ * Hashing moved out to the callers so the approval path — which never sees a
+ * plaintext password, only the hash stored when the applicant registered — can
+ * use the same transaction as the console's own create form.
+ */
+export type ProvisionInput = Omit<CreateTenantDto, 'ownerPassword'> & {
+  ownerPasswordHash: string;
+};
 
 @Injectable()
 export class TenantsService {
@@ -79,9 +90,29 @@ export class TenantsService {
    * worse than none, so this is all-or-nothing.
    */
   async create(dto: CreateTenantDto) {
+    return this.provisionAndAnnounce({
+      ...dto,
+      ownerPasswordHash: await hashPassword(dto.ownerPassword),
+    });
+  }
+
+  /**
+   * The same thing, for an approved registration.
+   *
+   * An application arrives with the password the applicant chose, hashed on the
+   * way in — see `StoreRequest.passwordHash` — so this path has a hash where
+   * `create` has a plaintext. Everything after that point is identical, which
+   * is why the two share `provisionAndAnnounce` rather than the approval flow
+   * growing its own copy of a transaction that mints a hostname and an owner.
+   */
+  async createFromApplication(input: ProvisionInput) {
+    return this.provisionAndAnnounce(input);
+  }
+
+  private async provisionAndAnnounce(input: ProvisionInput) {
     const platformDomain = this.config.get<string>('platform.domain', 'platform.com');
 
-    const created = await this.provision(dto, platformDomain);
+    const created = await this.provision(input, platformDomain);
 
     /**
      * Recorded after the transaction commits, not inside it.
@@ -174,7 +205,7 @@ export class TenantsService {
     }
   }
 
-  private async provision(dto: CreateTenantDto, platformDomain: string) {
+  private async provision(dto: ProvisionInput, platformDomain: string) {
     return this.prisma.runUnscoped(async (db) => {
       const clash = await db.tenant.findUnique({ where: { slug: dto.slug } });
       if (clash) {
@@ -260,7 +291,17 @@ export class TenantsService {
           owner = await tx.user.create({
             data: {
               email: dto.ownerEmail.toLowerCase(),
-              passwordHash: await argon2.hash(dto.ownerPassword, { type: argon2.argon2id }),
+              /**
+               * `hashPassword`, not a bare `argon2.hash`.
+               *
+               * This line used to call argon2 directly with only the algorithm
+               * set, taking the library's default cost — so a store owner's
+               * password was hashed more weakly than a staff member's, which is
+               * precisely the drift the shared helper exists to prevent. argon2
+               * encodes its parameters in the hash, so existing owners keep
+               * signing in unaffected.
+               */
+              passwordHash: dto.ownerPasswordHash,
               firstName: dto.ownerFirstName,
               lastName: dto.ownerLastName ?? '',
               systemRole: SystemRole.TENANT_OWNER,

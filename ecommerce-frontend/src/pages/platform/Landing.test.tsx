@@ -211,15 +211,19 @@ describe('the logo', () => {
 
 describe('the landing page navigation', () => {
   /**
-   * Every destination on this page has to exist. There is no public sign-up
-   * and no public pricing, so "Get Started" goes to the contact form and the
-   * nav carries no Pricing link.
+   * Every destination on this page has to exist.
+   *
+   * "Get Started" now goes to the application form — registering asks for a
+   * store and a person decides it, which is a real destination where a sign-up
+   * would not have been. Pricing is still absent: plan prices are
+   * super-admin-only and the link would go nowhere.
    */
-  it('points Get Started at the contact form, not a sign-up that does not exist', () => {
+  it('points Get Started at the application form', () => {
     render(<Landing />);
-    screen
-      .getAllByRole('link', { name: /get started/i })
-      .forEach((link) => expect(link).toHaveAttribute('href', '#contact'));
+    const links = screen.getAllByRole('link', { name: /get started/i });
+
+    expect(links.length).toBeGreaterThan(0);
+    links.forEach((link) => expect(link).toHaveAttribute('href', '/register'));
   });
 
   it('offers no link to a page that is not there', () => {

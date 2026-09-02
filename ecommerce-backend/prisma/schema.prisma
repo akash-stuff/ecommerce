@@ -57,25 +57,25 @@ model Tenant {
   updatedAt        DateTime     @updatedAt
   deletedAt        DateTime?
 
-  store         Store?
-  memberships   TenantUser[]
-  domains       Domain[]
-  subscription  Subscription?
-  products      Product[]
-  categories    Category[]
-  brands        Brand[]
-  customers     Customer[]
-  orders        Order[]
-  coupons       Coupon[]
-  carts         Cart[]
-  reviews       Review[]
-  pages         Page[]
-  banners       Banner[]
-  shippingZones ShippingZone[]
-  auditLogs     AuditLog[]
-  notifications Notification[]
-  paymentGateways PaymentGateway[]
-  emailOtps     EmailOtp[]
+  store                 Store?
+  memberships           TenantUser[]
+  domains               Domain[]
+  subscription          Subscription?
+  products              Product[]
+  categories            Category[]
+  brands                Brand[]
+  customers             Customer[]
+  orders                Order[]
+  coupons               Coupon[]
+  carts                 Cart[]
+  reviews               Review[]
+  pages                 Page[]
+  banners               Banner[]
+  shippingZones         ShippingZone[]
+  auditLogs             AuditLog[]
+  notifications         Notification[]
+  paymentGateways       PaymentGateway[]
+  emailOtps             EmailOtp[]
   newsletterSubscribers NewsletterSubscriber[]
 
   @@index([status])
@@ -95,28 +95,28 @@ model Tenant {
 /// `codeHash` is a hash for the same reason a password is: whoever can read
 /// this table must not be able to complete someone else's registration.
 model EmailOtp {
-  id        String   @id @default(uuid())
+  id         String    @id @default(uuid())
   /// Null for a platform-level challenge.
   ///
   /// Staff and platform administrators sign in on tenant-less admin hostnames
   /// and a `User` may staff several stores, so a password reset for one belongs
   /// to no single store — and a super admin belongs to none at all. Customer
   /// challenges keep their tenant, because a customer account *is* per store.
-  tenantId  String?
-  email     String
+  tenantId   String?
+  email      String
   /// Argon2 hash of the code. The code itself is only ever in the email.
-  codeHash  String
+  codeHash   String
   /// What finishing this challenge does. One value today; named so a password
   /// reset can reuse the table without guessing what an existing row was for.
-  purpose   String
+  purpose    String
   /// The registration this completes, already hashed. Null for purposes that
   /// carry nothing.
-  pending   Json?
-  attempts  Int      @default(0)
-  expiresAt DateTime
+  pending    Json?
+  attempts   Int       @default(0)
+  expiresAt  DateTime
   /// Set when the code is spent, so a replay cannot mint a second account.
   consumedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt  DateTime  @default(now())
 
   tenant Tenant? @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -148,9 +148,11 @@ model User {
   createdAt       DateTime   @default(now())
   updatedAt       DateTime   @updatedAt
 
-  memberships   TenantUser[]
-  refreshTokens RefreshToken[]
-  auditLogs     AuditLog[]
+  memberships           TenantUser[]
+  refreshTokens         RefreshToken[]
+  auditLogs             AuditLog[]
+  /// Store applications this person has decided on, as platform staff.
+  reviewedStoreRequests StoreRequest[] @relation("StoreRequestReviewer")
 
   @@index([systemRole])
   @@map("users")
@@ -267,16 +269,16 @@ enum DomainStatus {
 }
 
 model Domain {
-  id           String       @id @default(uuid())
-  tenantId     String
-  hostname     String       @unique
-  isPrimary    Boolean      @default(false)
-  isPlatform   Boolean      @default(false)
-  status       DomainStatus @default(PENDING)
-  verifyToken  String?
-  sslIssuedAt  DateTime?
-  verifiedAt   DateTime?
-  createdAt    DateTime     @default(now())
+  id          String       @id @default(uuid())
+  tenantId    String
+  hostname    String       @unique
+  isPrimary   Boolean      @default(false)
+  isPlatform  Boolean      @default(false)
+  status      DomainStatus @default(PENDING)
+  verifyToken String?
+  sslIssuedAt DateTime?
+  verifiedAt  DateTime?
+  createdAt   DateTime     @default(now())
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -289,23 +291,23 @@ model Domain {
 // -----------------------------------------------------------------------------
 
 model Store {
-  id          String   @id @default(uuid())
-  tenantId    String   @unique
-  templateId  String?
-  name        String
-  slug        String   @unique
-  description String?
-  email       String
-  phone       String?
+  id           String  @id @default(uuid())
+  tenantId     String  @unique
+  templateId   String?
+  name         String
+  slug         String  @unique
+  description  String?
+  email        String
+  phone        String?
   addressLine1 String?
   addressLine2 String?
-  city        String?
-  state       String?
-  country     String  @default("IN")
-  postalCode  String?
-  currency    String  @default("INR")
-  timezone    String  @default("Asia/Kolkata")
-  isPublished Boolean @default(false)
+  city         String?
+  state        String?
+  country      String  @default("IN")
+  postalCode   String?
+  currency     String  @default("INR")
+  timezone     String  @default("Asia/Kolkata")
+  isPublished  Boolean @default(false)
 
   // SEO defaults, overridable per product/category/page
   metaTitle       String?
@@ -355,40 +357,40 @@ model Store {
 /// Branding tokens. The storefront reads these at runtime and writes them into
 /// CSS custom properties — nothing about a tenant's look is compiled in.
 model Theme {
-  id             String  @id @default(uuid())
-  tenantId       String  @unique
-  storeId        String  @unique
-  logoUrl        String?
-  faviconUrl     String?
+  id                 String   @id @default(uuid())
+  tenantId           String   @unique
+  storeId            String   @unique
+  logoUrl            String?
+  faviconUrl         String?
   /// Green leads, amber-orange supports. Mirrored in src/theme/brand-defaults.ts
   /// and the frontend's index.css; change all three together.
-  primaryColor   String  @default("#166534")
-  secondaryColor String  @default("#F5A524")
-  accentColor    String  @default("#166534")
-  bodyFont       String  @default("Inter")
-  headingFont    String  @default("Inter")
+  primaryColor       String   @default("#166534")
+  secondaryColor     String   @default("#F5A524")
+  accentColor        String   @default("#166534")
+  bodyFont           String   @default("Inter")
+  headingFont        String   @default("Inter")
   /// Header logo height: 'sm' | 'md' | 'lg'. One fixed size cannot suit both a
   /// square mark and a long wordmark.
-  logoSize       String  @default("md")
+  logoSize           String   @default("md")
   /// Named page background from theme/backgrounds.ts. Rendered by the
   /// storefront in the store's own colours, so the name is all that is stored.
-  background     String  @default("plain")
+  background         String   @default("plain")
   /// A custom background image, which takes precedence over the preset.
   backgroundImageUrl String?
   /// 'cover' for a photograph, 'tile' for a seamless texture.
-  backgroundFit  String  @default("cover")
+  backgroundFit      String   @default("cover")
   /// Artwork beside the shopper sign-in form. Optional; the form is centred
   /// on its own when absent rather than showing an empty panel.
-  loginImageUrl  String?
+  loginImageUrl      String?
   /// A short line of the store's own words on that page — a delivery promise,
   /// a welcome, whatever the shopkeeper wants a new customer to read.
-  loginMessage   String?
-  headerConfig   Json    @default("{}")
-  footerConfig   Json    @default("{}")
-  homepageLayout Json    @default("[]")
-  socialLinks    Json    @default("{}")
-  customCss      String?
-  updatedAt      DateTime @updatedAt
+  loginMessage       String?
+  headerConfig       Json     @default("{}")
+  footerConfig       Json     @default("{}")
+  homepageLayout     Json     @default("[]")
+  socialLinks        Json     @default("{}")
+  customCss          String?
+  updatedAt          DateTime @updatedAt
 
   store Store @relation(fields: [storeId], references: [id], onDelete: Cascade)
 
@@ -406,19 +408,19 @@ enum ProductStatus {
 }
 
 model Category {
-  id             String   @id @default(uuid())
-  tenantId       String
-  parentId       String?
-  name           String
-  slug           String
-  description    String?
-  imageUrl       String?
-  position       Int      @default(0)
-  isActive       Boolean  @default(true)
-  metaTitle      String?
+  id              String   @id @default(uuid())
+  tenantId        String
+  parentId        String?
+  name            String
+  slug            String
+  description     String?
+  imageUrl        String?
+  position        Int      @default(0)
+  isActive        Boolean  @default(true)
+  metaTitle       String?
   metaDescription String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   parent   Category?  @relation("CategoryTree", fields: [parentId], references: [id])
@@ -446,46 +448,46 @@ model Brand {
 }
 
 model Product {
-  id               String        @id @default(uuid())
-  tenantId         String
-  categoryId       String?
-  brandId          String?
-  name             String
-  slug             String
-  sku              String
-  description      String?
-  shortDescription String?
-  price            Decimal       @db.Decimal(12, 2)
-  compareAtPrice   Decimal?      @db.Decimal(12, 2)
-  costPrice        Decimal?      @db.Decimal(12, 2)
-  taxRate          Decimal       @default(0) @db.Decimal(5, 2)
-  stock            Int           @default(0)
-  lowStockThreshold Int          @default(5)
-  trackInventory   Boolean       @default(true)
-  status           ProductStatus @default(DRAFT)
-  isFeatured       Boolean       @default(false)
-  tags             String[]      @default([])
-  weightGrams      Int?
-  lengthMm         Int?
-  widthMm          Int?
-  heightMm         Int?
-  metaTitle        String?
-  metaDescription  String?
-  ratingAverage    Decimal       @default(0) @db.Decimal(3, 2)
-  ratingCount      Int           @default(0)
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  deletedAt        DateTime?
+  id                String        @id @default(uuid())
+  tenantId          String
+  categoryId        String?
+  brandId           String?
+  name              String
+  slug              String
+  sku               String
+  description       String?
+  shortDescription  String?
+  price             Decimal       @db.Decimal(12, 2)
+  compareAtPrice    Decimal?      @db.Decimal(12, 2)
+  costPrice         Decimal?      @db.Decimal(12, 2)
+  taxRate           Decimal       @default(0) @db.Decimal(5, 2)
+  stock             Int           @default(0)
+  lowStockThreshold Int           @default(5)
+  trackInventory    Boolean       @default(true)
+  status            ProductStatus @default(DRAFT)
+  isFeatured        Boolean       @default(false)
+  tags              String[]      @default([])
+  weightGrams       Int?
+  lengthMm          Int?
+  widthMm           Int?
+  heightMm          Int?
+  metaTitle         String?
+  metaDescription   String?
+  ratingAverage     Decimal       @default(0) @db.Decimal(3, 2)
+  ratingCount       Int           @default(0)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  deletedAt         DateTime?
 
-  tenant     Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  category   Category?        @relation(fields: [categoryId], references: [id])
-  brand      Brand?           @relation(fields: [brandId], references: [id])
-  images     ProductImage[]
-  variants   ProductVariant[]
-  reviews    Review[]
-  cartItems  CartItem[]
-  orderItems OrderItem[]
-  wishlists  WishlistItem[]
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category      Category?              @relation(fields: [categoryId], references: [id])
+  brand         Brand?                 @relation(fields: [brandId], references: [id])
+  images        ProductImage[]
+  variants      ProductVariant[]
+  reviews       Review[]
+  cartItems     CartItem[]
+  orderItems    OrderItem[]
+  wishlists     WishlistItem[]
   inventoryTxns InventoryTransaction[]
 
   @@unique([tenantId, slug])
@@ -512,19 +514,19 @@ model ProductImage {
 /// Variants carry their own SKU/price/stock. `optionValues` holds the resolved
 /// attribute map, e.g. { "Size": "M", "Color": "Black" }.
 model ProductVariant {
-  id           String   @id @default(uuid())
-  tenantId     String
-  productId    String
-  sku          String
-  name         String
-  optionValues Json     @default("{}")
-  price        Decimal  @db.Decimal(12, 2)
+  id             String   @id @default(uuid())
+  tenantId       String
+  productId      String
+  sku            String
+  name           String
+  optionValues   Json     @default("{}")
+  price          Decimal  @db.Decimal(12, 2)
   compareAtPrice Decimal? @db.Decimal(12, 2)
-  costPrice    Decimal? @db.Decimal(12, 2)
-  stock        Int      @default(0)
-  imageUrl     String?
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
+  costPrice      Decimal? @db.Decimal(12, 2)
+  stock          Int      @default(0)
+  imageUrl       String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
 
   product       Product                @relation(fields: [productId], references: [id], onDelete: Cascade)
   cartItems     CartItem[]
@@ -574,21 +576,21 @@ model InventoryTransaction {
 /// Customers are tenant-scoped, not platform users: the same email may shop at
 /// two different stores and those are two unrelated accounts.
 model Customer {
-  id              String    @id @default(uuid())
-  tenantId        String
-  email           String
-  passwordHash    String?
-  firstName       String
-  lastName        String?
-  phone           String?
-  isActive        Boolean   @default(true)
-  emailVerifiedAt DateTime?
-  acceptsMarketing Boolean  @default(false)
-  totalSpent      Decimal   @default(0) @db.Decimal(14, 2)
-  orderCount      Int       @default(0)
-  lastOrderAt     DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id               String    @id @default(uuid())
+  tenantId         String
+  email            String
+  passwordHash     String?
+  firstName        String
+  lastName         String?
+  phone            String?
+  isActive         Boolean   @default(true)
+  emailVerifiedAt  DateTime?
+  acceptsMarketing Boolean   @default(false)
+  totalSpent       Decimal   @default(0) @db.Decimal(14, 2)
+  orderCount       Int       @default(0)
+  lastOrderAt      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   tenant        Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   addresses     Address[]
@@ -604,19 +606,19 @@ model Customer {
 }
 
 model Address {
-  id           String  @id @default(uuid())
-  tenantId     String
-  customerId   String
-  label        String?
-  fullName     String
-  phone        String
-  line1        String
-  line2        String?
-  city         String
-  state        String
-  country      String  @default("IN")
-  postalCode   String
-  isDefault    Boolean @default(false)
+  id         String  @id @default(uuid())
+  tenantId   String
+  customerId String
+  label      String?
+  fullName   String
+  phone      String
+  line1      String
+  line2      String?
+  city       String
+  state      String
+  country    String  @default("IN")
+  postalCode String
+  isDefault  Boolean @default(false)
 
   customer Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
 
@@ -646,14 +648,14 @@ model WishlistItem {
 /// Guest carts key off `sessionToken`; on login the guest cart is merged into
 /// the customer's cart rather than discarded.
 model Cart {
-  id           String   @id @default(uuid())
+  id           String    @id @default(uuid())
   tenantId     String
   customerId   String?
   sessionToken String?
   couponCode   String?
   expiresAt    DateTime?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   tenant   Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer Customer?  @relation(fields: [customerId], references: [id], onDelete: Cascade)
@@ -713,28 +715,28 @@ enum FulfillmentStatus {
 }
 
 model Order {
-  id            String            @id @default(uuid())
-  tenantId      String
-  customerId    String?
-  orderNumber   String
-  status        OrderStatus       @default(PENDING)
-  paymentStatus PaymentStatus     @default(PENDING)
+  id                String            @id @default(uuid())
+  tenantId          String
+  customerId        String?
+  orderNumber       String
+  status            OrderStatus       @default(PENDING)
+  paymentStatus     PaymentStatus     @default(PENDING)
   fulfillmentStatus FulfillmentStatus @default(UNFULFILLED)
 
   // Money is stored as Decimal and always recomputed server-side. Frontend
   // totals are never persisted.
-  subtotal       Decimal @db.Decimal(14, 2)
-  discountTotal  Decimal @default(0) @db.Decimal(14, 2)
-  taxTotal       Decimal @default(0) @db.Decimal(14, 2)
-  shippingTotal  Decimal @default(0) @db.Decimal(14, 2)
-  grandTotal     Decimal @db.Decimal(14, 2)
-  currency       String  @default("INR")
+  subtotal      Decimal @db.Decimal(14, 2)
+  discountTotal Decimal @default(0) @db.Decimal(14, 2)
+  taxTotal      Decimal @default(0) @db.Decimal(14, 2)
+  shippingTotal Decimal @default(0) @db.Decimal(14, 2)
+  grandTotal    Decimal @db.Decimal(14, 2)
+  currency      String  @default("INR")
 
-  couponId       String?
-  couponCode     String?
+  couponId   String?
+  couponCode String?
 
-  customerEmail  String
-  customerPhone  String?
+  customerEmail   String
+  customerPhone   String?
   billingAddress  Json
   shippingAddress Json
 
@@ -786,23 +788,23 @@ model OrderItem {
 }
 
 model Payment {
-  id             String        @id @default(uuid())
-  tenantId       String
-  orderId        String
-  provider       String
-  providerRef    String?
+  id              String        @id @default(uuid())
+  tenantId        String
+  orderId         String
+  provider        String
+  providerRef     String?
   providerOrderId String?
-  method         String?
-  status         PaymentStatus @default(PENDING)
-  amount         Decimal       @db.Decimal(14, 2)
-  currency       String        @default("INR")
+  method          String?
+  status          PaymentStatus @default(PENDING)
+  amount          Decimal       @db.Decimal(14, 2)
+  currency        String        @default("INR")
   /// Raw provider payload, with secrets stripped before persisting.
-  rawPayload     Json?
-  failureReason  String?
-  capturedAt     DateTime?
-  refundedAmount Decimal       @default(0) @db.Decimal(14, 2)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  rawPayload      Json?
+  failureReason   String?
+  capturedAt      DateTime?
+  refundedAmount  Decimal       @default(0) @db.Decimal(14, 2)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   order Order @relation(fields: [orderId], references: [id], onDelete: Cascade)
 
@@ -823,17 +825,17 @@ model Payment {
 /// the exception: a gateway's key id is published to the browser by design, so
 /// keeping it readable is what lets the admin show which account is connected.
 model PaymentGateway {
-  id        String  @id @default(uuid())
+  id        String   @id @default(uuid())
   tenantId  String
   /// Matches PaymentProvider.name — 'RAZORPAY', 'COD'.
   provider  String
   /// Off until the store finishes connecting it. Checkout offers nothing that
   /// is not both enabled and completely configured.
-  isEnabled Boolean @default(false)
+  isEnabled Boolean  @default(false)
   /// Publishable identifier, e.g. a Razorpay key id. Null for COD.
   publicKey String?
   /// Encrypted secrets, keyed by field name. Shape is the provider's business.
-  secrets   Json    @default("{}")
+  secrets   Json     @default("{}")
   /// Free-text label the store sees, e.g. which account this is.
   label     String?
   createdAt DateTime @default(now())
@@ -848,7 +850,7 @@ model PaymentGateway {
 /// Idempotency guard for provider webhooks — a duplicate delivery hits this
 /// unique constraint and is acknowledged without reprocessing.
 model WebhookEvent {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   provider    String
   eventId     String
   eventType   String
@@ -856,7 +858,7 @@ model WebhookEvent {
   payload     Json
   processedAt DateTime?
   error       String?
-  createdAt   DateTime @default(now())
+  createdAt   DateTime  @default(now())
 
   @@unique([provider, eventId])
   @@map("webhook_events")
@@ -872,23 +874,23 @@ enum DiscountType {
 }
 
 model Coupon {
-  id                 String       @id @default(uuid())
-  tenantId           String
-  code               String
-  description        String?
-  discountType       DiscountType
-  discountValue      Decimal      @db.Decimal(12, 2)
-  minOrderAmount     Decimal?     @db.Decimal(12, 2)
-  maxDiscountAmount  Decimal?     @db.Decimal(12, 2)
-  usageLimit         Int?
-  usageCount         Int          @default(0)
-  perCustomerLimit   Int?
-  productIds         String[]     @default([])
-  categoryIds        String[]     @default([])
-  startsAt           DateTime?
-  expiresAt          DateTime?
-  isActive           Boolean      @default(true)
-  createdAt          DateTime     @default(now())
+  id                String       @id @default(uuid())
+  tenantId          String
+  code              String
+  description       String?
+  discountType      DiscountType
+  discountValue     Decimal      @db.Decimal(12, 2)
+  minOrderAmount    Decimal?     @db.Decimal(12, 2)
+  maxDiscountAmount Decimal?     @db.Decimal(12, 2)
+  usageLimit        Int?
+  usageCount        Int          @default(0)
+  perCustomerLimit  Int?
+  productIds        String[]     @default([])
+  categoryIds       String[]     @default([])
+  startsAt          DateTime?
+  expiresAt         DateTime?
+  isActive          Boolean      @default(true)
+  createdAt         DateTime     @default(now())
 
   tenant Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   orders Order[]
@@ -920,13 +922,13 @@ model CouponUsage {
 // -----------------------------------------------------------------------------
 
 model ShippingZone {
-  id        String   @id @default(uuid())
-  tenantId  String
-  name      String
-  countries String[] @default([])
-  states    String[] @default([])
+  id                 String   @id @default(uuid())
+  tenantId           String
+  name               String
+  countries          String[] @default([])
+  states             String[] @default([])
   postalCodePrefixes String[] @default([])
-  isActive  Boolean  @default(true)
+  isActive           Boolean  @default(true)
 
   tenant  Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   methods ShippingMethod[]
@@ -999,19 +1001,19 @@ enum ReviewStatus {
 }
 
 model Review {
-  id               String       @id @default(uuid())
-  tenantId         String
-  productId        String
-  customerId       String
-  orderId          String?
-  rating           Int
-  title            String?
-  comment          String?
-  images           String[]     @default([])
-  isVerifiedPurchase Boolean    @default(false)
-  status           ReviewStatus @default(PENDING)
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  id                 String       @id @default(uuid())
+  tenantId           String
+  productId          String
+  customerId         String
+  orderId            String?
+  rating             Int
+  title              String?
+  comment            String?
+  images             String[]     @default([])
+  isVerifiedPurchase Boolean      @default(false)
+  status             ReviewStatus @default(PENDING)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
   tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
@@ -1024,22 +1026,22 @@ model Review {
 }
 
 model Page {
-  id              String   @id @default(uuid())
-  tenantId        String
-  title           String
-  slug            String
-  content         String
+  id                 String   @id @default(uuid())
+  tenantId           String
+  title              String
+  slug               String
+  content            String
   /// Artwork behind the page heading. Optional; without it the heading sits on
   /// the store's usual surface.
   backgroundImageUrl String?
   /// Further images shown as a gallery under the content, as
   /// `[{ url, caption? }]`. A page is rarely only words.
-  images          Json     @default("[]")
-  isPublished     Boolean  @default(false)
-  metaTitle       String?
-  metaDescription String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  images             Json     @default("[]")
+  isPublished        Boolean  @default(false)
+  metaTitle          String?
+  metaDescription    String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1081,15 +1083,15 @@ model NewsletterSubscriber {
 /// line of text, so `imageUrl` is optional and the service requires it per
 /// placement rather than the column doing it for every case.
 model Banner {
-  id        String    @id @default(uuid())
+  id        String  @id @default(uuid())
   tenantId  String
   title     String?
   subtitle  String?
   imageUrl  String?
   linkUrl   String?
-  position  Int       @default(0)
-  placement String    @default("HOME_HERO")
-  isActive  Boolean   @default(true)
+  position  Int     @default(0)
+  placement String  @default("HOME_HERO")
+  isActive  Boolean @default(true)
 
   /// How the announcement strip is drawn. All four are null by default, which
   /// means "the store's brand colour, white text and the body font" — exactly
@@ -1102,8 +1104,8 @@ model Banner {
   fontFamily      String?
   /// 'sm' | 'md' | 'lg'
   fontSize        String?
-  startsAt  DateTime?
-  endsAt    DateTime?
+  startsAt        DateTime?
+  endsAt          DateTime?
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -1163,4 +1165,76 @@ model AuditLog {
   @@index([tenantId, createdAt])
   @@index([entityType, entityId])
   @@map("audit_logs")
+}
+
+// -----------------------------------------------------------------------------
+// SIGNING UP
+// -----------------------------------------------------------------------------
+
+enum StoreRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  /// Withdrawn by the platform without a decision — a duplicate, or spam.
+  DISCARDED
+}
+
+/// Somebody asking for a store, before there is one.
+///
+/// Registration is a request rather than a sign-up because a tenant is not a
+/// row: provisioning one mints a hostname, a theme, a domain and an owner
+/// account in a single transaction, and puts a shop on the public internet
+/// under the platform's certificate. That is the platform owner's decision, so
+/// this table is the queue it is made from.
+///
+/// Nothing here is a Tenant until it is approved. There is deliberately no
+/// `User` either: an unapproved applicant with a platform login could sign in
+/// and see an empty console, and a rejected one would leave an account behind
+/// that nothing owns.
+model StoreRequest {
+  id     String             @id @default(uuid())
+  status StoreRequestStatus @default(PENDING)
+
+  // --- The shop they are asking for ---
+  businessName     String
+  /// Their preferred address. Checked for clashes when it arrives and again at
+  /// approval, because the gap between the two is measured in days.
+  slug             String
+  businessCategory String?
+  /// Anything they wanted to tell us. Free text, shown to the reviewer only.
+  message          String?
+
+  // --- Who is asking ---
+  firstName String
+  lastName  String
+  email     String
+  phone     String?
+
+  /// The password they chose, hashed on arrival.
+  ///
+  /// Held here rather than emailed later. This codebase never sends a password
+  /// — see the note on the staff invite — and the alternative, issuing one at
+  /// approval, means a credential read out over the phone before the applicant
+  /// can use the store they asked for. Hashed with the same argon2id settings
+  /// as `User.passwordHash`, and copied to the User row at approval.
+  passwordHash String
+
+  // --- The decision ---
+  reviewedAt   DateTime?
+  reviewedById String?
+  /// Why it was refused, sent to the applicant verbatim.
+  reviewNote   String?
+
+  /// What it became. Not a foreign key: deleting a store must not delete the
+  /// record of who asked for it and who let them in.
+  tenantId String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  reviewedBy User? @relation("StoreRequestReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+
+  @@index([status, createdAt])
+  @@index([email])
+  @@map("store_requests")
 }

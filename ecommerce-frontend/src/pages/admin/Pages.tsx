@@ -360,7 +360,7 @@ export default function Pages() {
                 <ImageUpload
                   label="header image"
                   purpose="page"
-                  aspect="wide"
+                  aspect="page"
                   value={draft.backgroundImageUrl}
                   onChange={(backgroundImageUrl) =>
                     setDraft({ ...draft, backgroundImageUrl })

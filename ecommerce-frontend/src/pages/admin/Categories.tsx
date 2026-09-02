@@ -247,7 +247,7 @@ export default function Categories() {
               <ImageUpload
                 label="image"
                 purpose="category"
-                aspect="wide"
+                aspect="category"
                 value={draft.imageUrl}
                 onChange={(url) => setDraft({ ...draft, imageUrl: url })}
               />

@@ -534,7 +534,7 @@ export default function Templates() {
                 <ImageUpload
                   label="thumbnail"
                   purpose="template"
-                  aspect="wide"
+                  aspect="template"
                   value={draft.previewImage}
                   onChange={(url) => setDraft({ ...draft, previewImage: url })}
                 />

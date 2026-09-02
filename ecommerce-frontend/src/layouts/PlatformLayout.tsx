@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  Building2, CreditCard, LayoutDashboard, LayoutTemplate, LogOut, Mail, Menu,
+  Building2, CreditCard, Inbox, LayoutDashboard, LayoutTemplate, LogOut, Mail, Menu,
   ScrollText, X,
 } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
@@ -11,6 +11,7 @@ import { Lockup } from '@/features/platform/brand';
 const NAV = [
   { to: '/platform', label: 'Overview', icon: LayoutDashboard, end: true },
   { to: '/platform/tenants', label: 'Stores', icon: Building2 },
+  { to: '/platform/applications', label: 'Applications', icon: Inbox },
   { to: '/platform/plans', label: 'Plans', icon: CreditCard },
   { to: '/platform/templates', label: 'Templates', icon: LayoutTemplate },
   { to: '/platform/notifications', label: 'Notifications', icon: Mail },

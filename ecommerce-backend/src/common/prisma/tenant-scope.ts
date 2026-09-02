@@ -58,6 +58,7 @@ export const PLATFORM_MANAGED_TENANT_MODELS = new Map<string, string>([
   ['AuditLog', 'tenantId is nullable and audit writes must never be filtered by the scope of the actor being audited.'],
   ['Notification', 'tenantId is nullable; platform-level notices have none.'],
   ['WebhookEvent', 'Arrives from a payment provider before the tenant has been identified.'],
+  ['StoreRequest', 'An application for a store that does not exist yet: tenantId is null until it is approved, and the queue is read across every tenant by platform staff.'],
 ]);
 
 const READ_MANY = new Set(['findMany', 'findFirst', 'findFirstOrThrow', 'count', 'aggregate', 'groupBy']);

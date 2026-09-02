@@ -282,6 +282,7 @@ export default function Banners() {
                 <ImageUpload
                   label="Banner"
                   purpose="banner"
+                  aspect="banner"
                   value={draft.imageUrl}
                   onChange={(url) => setDraft({ ...draft, imageUrl: url })}
                 />

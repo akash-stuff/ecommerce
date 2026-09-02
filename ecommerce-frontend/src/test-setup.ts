@@ -12,6 +12,24 @@ import '@testing-library/jest-dom/vitest';
  * motion off, no breakpoint matched. A test that needs a different answer can
  * spy on this and return its own.
  */
+/**
+ * `ResizeObserver`, which jsdom also does not implement.
+ *
+ * The stub observes nothing and fires nothing: jsdom lays nothing out, so there
+ * is never a size change to report. Components that measure an element are
+ * expected to take a first measurement themselves rather than wait for the
+ * observer's initial callback — which is the right shape anyway, and what a
+ * test asserting on layout has to stub `clientWidth` for regardless.
+ */
+if (typeof globalThis !== 'undefined' && !('ResizeObserver' in globalThis)) {
+  class NoopResizeObserver implements ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  }
+  globalThis.ResizeObserver = NoopResizeObserver;
+}
+
 if (typeof window !== 'undefined' && !window.matchMedia) {
   window.matchMedia = (query: string): MediaQueryList =>
     ({
