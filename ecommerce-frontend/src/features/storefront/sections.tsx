@@ -1,9 +1,24 @@
 import { useState } from 'react';
+import { Spinner } from '@/components/Spinner';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { AlertTriangle, ArrowRight, Check, Loader2 } from 'lucide-react';
+import {
+  AlertTriangle,
+  ArrowRight,
+  BadgeIndianRupee,
+  Check,
+  Clock,
+  MessageCircle,
+  RefreshCw,
+  ShieldCheck,
+  ShoppingBag,
+  Star,
+  Truck,
+} from 'lucide-react';
 import { bannerService, newsletterService, productService } from '@/services/store.service';
 import { BannerLink } from '@/components/BannerLink';
+import { SaveButton } from '@/components/SaveButton';
+import { Reveal } from './Reveal';
 import { categoryService } from '@/services/admin.service';
 import { useStore } from '@/features/theme/ThemeProvider';
 import { formatMoney } from '@/utils/format';
@@ -19,6 +34,7 @@ import type { Product } from '@/types/api';
  */
 export const SECTIONS = {
   hero: Hero,
+  promise: Promise_,
   featured: Featured,
   categories: Categories,
   newArrivals: NewArrivals,
@@ -31,8 +47,86 @@ export function isSectionKey(value: string): value is SectionKey {
   return value in SECTIONS;
 }
 
+/**
+ * The icons a promise row may name.
+ *
+ * Keyed by the server's allowlist rather than by a free string, so a row can
+ * never name a component that does not exist. An unknown key falls back to the
+ * check mark instead of rendering a hole where the icon should be — an older
+ * storefront build must not break on a row a newer admin wrote.
+ */
+const PROMISE_ICONS: Record<string, typeof Truck> = {
+  truck: Truck,
+  clock: Clock,
+  rupee: BadgeIndianRupee,
+  shield: ShieldCheck,
+  chat: MessageCircle,
+  refresh: RefreshCw,
+};
+
+/**
+ * The strip of things this shop promises.
+ *
+ * The wording arrives finished from the server — either written by the
+ * shopkeeper in Appearance, or derived from their shipping methods when they
+ * have written none. Nothing is composed here, which is the point: a tile that
+ * said one thing when authored and another when derived would be two
+ * implementations of the same sentence.
+ *
+ * ## Why it hides itself
+ *
+ * Under two tiles the row stops reading as a row — one lonely claim centred in
+ * a band looks like the other three failed to load. Nothing is better than
+ * that, so the section renders null.
+ */
+function Promise_() {
+  const tiles = useStore().promises ?? [];
+
+  if (tiles.length < 2) return null;
+
+  /*
+    The track count follows the tile count, because the tile count is not known
+    until the shop's configuration is read. A fixed four-column grid leaves a
+    visible empty quarter on the common case of three, which reads as a tile
+    that failed to load rather than as a shop that offers three things.
+
+    Written as whole class names: Tailwind scans source text, so a template
+    literal like `lg:grid-cols-${n}` compiles to nothing at all.
+  */
+  const columns =
+    tiles.length >= 4 ? 'lg:grid-cols-4' : tiles.length === 3 ? 'lg:grid-cols-3' : 'lg:grid-cols-2';
+
+  return (
+    <section className="border-y border-ink-100 bg-brand-wash">
+      <div className={`${SHELL} py-10 sm:py-12`}>
+        {/*
+          `sm:grid-cols-2` before four: at 640px four tiles are 160px each and
+          "Pay when your order arrives" wraps to three lines. Two rows of two
+          reads; one row of four crammed does not.
+        */}
+        <div className={`grid grid-cols-1 gap-x-8 gap-y-7 sm:grid-cols-2 ${columns}`}>
+          {tiles.map((tile, i) => {
+            const Icon = PROMISE_ICONS[tile.icon] ?? Check;
+            return (
+              <Reveal key={`${tile.title}-${i}`} delay={i * 70}>
+                <div className="flex items-start gap-3.5">
+                  <Icon size={20} strokeWidth={1.5} className="mt-0.5 shrink-0 text-brand" />
+                  <div className="min-w-0">
+                    <p className="surface-strong text-sm font-medium">{tile.title}</p>
+                    <p className="surface-muted mt-1 text-sm leading-relaxed">{tile.detail}</p>
+                  </div>
+                </div>
+              </Reveal>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /** One rhythm for every section, so the page reads as one document. */
-const SHELL = 'mx-auto max-w-7xl px-4 sm:px-8';
+const SHELL = 'mx-auto page-container px-4 sm:px-8';
 const BLOCK = 'py-16 sm:py-24';
 
 /**
@@ -102,11 +196,32 @@ function Hero() {
   }
 
   return (
-    <section className={`${SHELL} py-20 sm:py-32`}>
+    <section className="relative overflow-hidden">
+      {/*
+        An ambient wash in the store's own colours.
+
+        The typographic hero had nothing behind it, so a shop without a banner
+        opened on blank paper. Two radials read from `--brand-primary` and
+        `--brand-secondary` give it a stage without inventing artwork — and
+        because they read the variables, they are that shop's colours rather
+        than a hard-coded palette that would be wrong for every other shop.
+      */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute inset-0"
+        style={{
+          backgroundImage:
+            'radial-gradient(46rem 26rem at 6% -12%, rgb(var(--brand-primary) / 0.13), transparent 62%),' +
+            'radial-gradient(34rem 22rem at 98% 2%, rgb(var(--brand-secondary) / 0.15), transparent 62%)',
+        }}
+      />
+
+      <div className={`relative ${SHELL} py-20 sm:py-32`}>
       <div className="max-w-3xl">
         {/* An eyebrow gives the headline something to sit under and turns a bare
             store name into a masthead. */}
-        <p className="surface-muted text-[11px] font-semibold uppercase tracking-[0.22em]">
+        <p className="surface-muted inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-[0.22em]">
+          <span className="h-1 w-1 rounded-full bg-brand-secondary" />
           {store.template?.name ?? 'Now open'}
         </p>
         <h1 className="surface-strong mt-5 font-display text-5xl leading-[1.03] tracking-tight sm:text-7xl">
@@ -117,21 +232,25 @@ function Hero() {
             {store.description}
           </p>
         )}
-        <div className="mt-10 flex flex-wrap items-center gap-3">
+        {/* `items-stretch`: the filled pill has no border and the outlined one
+            does, so centring them leaves their tops and bottoms a pixel apart.
+            See the same note on the product page's action row. */}
+        <div className="mt-10 flex flex-wrap items-stretch gap-3">
           <Link
             to="/shop"
-            className="group inline-flex items-center gap-2 rounded-full bg-brand px-7 py-3.5 text-sm font-medium text-white transition-transform hover:-translate-y-0.5"
+            className="group inline-flex items-center gap-2 rounded-full bg-brand px-7 py-3.5 text-sm font-medium text-white shadow-glow-store transition-all hover:-translate-y-0.5 hover:shadow-lifted"
           >
             Shop everything
             <ArrowRight size={15} className="transition-transform group-hover:translate-x-0.5" />
           </Link>
           <Link
             to="/shop?sort=createdAt:desc"
-            className="surface-line rounded-full border px-6 py-3.5 text-sm font-medium text-ink-900 transition-colors hover:border-brand hover:text-brand"
+            className="surface-card surface-raise inline-flex items-center rounded-full border px-6 py-3.5 text-sm font-medium text-ink-900 hover:border-brand hover:text-brand"
           >
             New arrivals
           </Link>
         </div>
+      </div>
       </div>
     </section>
   );
@@ -173,82 +292,121 @@ function NewArrivals() {
 }
 
 /**
- * Category tiles, using the category's own image when it has one.
+ * The "shop by category" row.
  *
- * The image is the reason this is worth a section at all — a grid of grey boxes
- * with words in them is a table of contents, not a shop window. Categories
- * without an image fall back to a brand-tinted panel rather than a blank one.
+ * A framed tile per category: the photograph in a brand-coloured mount, and a
+ * caption bar under it carrying the category name, what it saves you, and the
+ * invitation. The frame is what makes a row of six read as a set of cards
+ * rather than as six loose photographs.
+ *
+ * The discount line is real. It comes from `/categories/showcase`, which
+ * computes the spread from `compareAtPrice` against `price` across that
+ * category's live products — the same arithmetic behind the badge on a product
+ * card, so a tile promising "30–70% OFF" promises something the shopper will
+ * actually find inside. Categories with nothing reduced show their product
+ * count instead of a made-up number, and the row is dropped entirely when the
+ * shop has no categories with stock in them.
  */
 function Categories() {
   const { data } = useQuery({
-    queryKey: ['storefront-categories'],
-    queryFn: categoryService.tree,
+    queryKey: ['storefront-category-tiles'],
+    queryFn: categoryService.showcase,
     staleTime: 5 * 60_000,
   });
 
-  const categories = (data ?? []).slice(0, 6);
-  // Nothing to browse by — showing an empty grid would look broken.
+  const categories = data ?? [];
+  // Nothing to browse by — a row of dead ends looks worse than no row.
   if (categories.length === 0) return null;
 
   return (
     <section className={`${SHELL} ${BLOCK}`}>
-      <SectionHead eyebrow="Browse" title="Shop by category" />
+      <Reveal>
+        <SectionHead eyebrow="Browse" title="Shop by category" href="/shop" />
+      </Reveal>
 
-      <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {categories.map((category, index) => (
-          <Link
+      {/*
+        A scroller below `sm`, a grid above it.
+
+        Six tiles will not fit a phone at a legible size, and squeezing them
+        into two columns turns the row into a block. Swiping is what a shopper
+        expects of a category rail on a phone; `snap-x` makes it stop on a tile
+        rather than anywhere.
+      */}
+      <div className="-mx-4 mt-10 flex snap-x snap-mandatory gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 lg:grid-cols-6">
+        {categories.map((category, i) => (
+          <Reveal
             key={category.id}
+            delay={(i % 6) * 60}
+            className="w-[62%] shrink-0 snap-start sm:w-auto"
+          >
+          <Link
             to={`/category/${category.slug}`}
-            className={`group relative overflow-hidden rounded-2xl ${
-              // The first tile spans two columns on wide screens, so the grid
-              // has a focal point instead of six equal boxes.
-              index === 0 ? 'lg:col-span-2 lg:row-span-1' : ''
-            }`}
+            className="group block"
           >
             {/*
-              One shape for every tile, including the wide one.
-
-              The first tile used to be 16/9 and the rest 4/3, which meant the
-              *same* uploaded image was cropped two different ways depending on
-              where a category happened to sort — and the shopkeeper who
-              positioned it in the admin saw neither. The feature tile is still
-              the focal point; it earns that by spanning two columns and so
-              being drawn larger, not by being a different shape.
-
-              4/3 is what ASPECTS.category crops to, in components/admin/
-              ImageUpload. Change one and you must change both.
+              The mount. A gradient in the shop's own two colours, so the frame
+              belongs to the store rather than being a fixed blue — this is the
+              part of the reference design that has to be per-tenant.
             */}
-            <div className="aspect-[4/3]">
-              {category.imageUrl ? (
-                <img
-                  src={category.imageUrl}
-                  alt=""
-                  loading="lazy"
-                  className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
-                />
-              ) : (
-                <div className="h-full w-full bg-gradient-to-br from-brand/15 via-brand/5 to-brand-secondary/10" />
-              )}
-            </div>
+            <div
+              className="rounded-2xl p-[3px] shadow-card transition-all duration-300 group-hover:-translate-y-1 group-hover:shadow-lifted"
+              style={{
+                backgroundImage:
+                  'linear-gradient(160deg, rgb(var(--brand-primary) / 0.85), rgb(var(--brand-secondary) / 0.75))',
+              }}
+            >
+              <div className="overflow-hidden rounded-[0.85rem] bg-white">
+                <div className="aspect-[4/5] overflow-hidden">
+                  {category.imageUrl ? (
+                    <img
+                      src={category.imageUrl}
+                      alt=""
+                      loading="lazy"
+                      className="h-full w-full object-cover transition-transform duration-700 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div
+                      className="flex h-full w-full items-center justify-center"
+                      style={{
+                        backgroundImage:
+                          'linear-gradient(135deg, rgb(var(--brand-primary) / 0.10), rgb(var(--brand-secondary) / 0.10))',
+                      }}
+                    >
+                      <ShoppingBag
+                        size={26}
+                        strokeWidth={1.25}
+                        className="text-brand opacity-30"
+                        aria-hidden="true"
+                      />
+                    </div>
+                  )}
+                </div>
 
-            <div className="absolute inset-0 bg-gradient-to-t from-ink-950/70 via-ink-950/10 to-transparent" />
+                {/* The caption sits inside the frame, on a tint of the shop's
+                    colour, so the mount reads as one object rather than as a
+                    border round a photo. */}
+                <div
+                  className="px-3 py-3 text-center"
+                  style={{ backgroundColor: 'rgb(var(--brand-primary) / 0.07)' }}
+                >
+                  <p className="truncate text-[13px] font-medium text-ink-800">{category.name}</p>
 
-            <div className="absolute inset-x-0 bottom-0 flex items-end justify-between gap-3 p-5">
-              <div>
-                <span className="font-display text-lg tracking-tight text-white sm:text-xl">
-                  {category.name}
-                </span>
-                {category.children.length > 0 && (
-                  <span className="mt-0.5 block text-xs text-white/70">
-                    {category.children.length} subcategories
-                  </span>
-                )}
+                  <p className="numeric mt-0.5 text-base font-bold leading-tight text-brand sm:text-lg">
+                    {category.discount
+                      ? category.discount.min === category.discount.max
+                        ? `${category.discount.max}% OFF`
+                        : `${category.discount.min}-${category.discount.max}% OFF`
+                      : `${category.productCount} ${category.productCount === 1 ? 'item' : 'items'}`}
+                  </p>
+
+                  <p className="mt-0.5 text-xs text-ink-600 underline-offset-2 group-hover:underline">
+                    Shop Now
+                  </p>
+                </div>
               </div>
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur transition-all group-hover:bg-white group-hover:text-ink-950">
-                <ArrowRight size={15} />
-              </span>
             </div>
           </Link>
+          </Reveal>
         ))}
       </div>
     </section>
@@ -325,7 +483,7 @@ function Newsletter() {
                   disabled={subscribe.isPending}
                   className="inline-flex items-center justify-center gap-2 rounded-full bg-white px-6 py-3 text-sm font-medium text-ink-950 transition-opacity hover:opacity-90 disabled:opacity-50"
                 >
-                  {subscribe.isPending && <Loader2 size={14} className="animate-spin" />}
+                  {subscribe.isPending && <Spinner size={14} tone="current" />}
                   {subscribe.isPending ? 'Adding you…' : 'Notify me'}
                 </button>
               </form>
@@ -366,10 +524,13 @@ function SectionHead({
   return (
     <div className="flex flex-wrap items-end justify-between gap-4">
       <div>
-        <p className="surface-muted text-[11px] font-semibold uppercase tracking-[0.18em]">
+        {/* A short rule in the shop's colour, so every section opens the same
+            way and the eyebrow is anchored rather than floating. */}
+        <p className="surface-muted flex items-center gap-2.5 text-[11px] font-semibold uppercase tracking-[0.18em]">
+          <span className="h-px w-6 bg-brand" />
           {eyebrow}
         </p>
-        <h2 className="surface-strong mt-2 font-display text-2xl tracking-tight sm:text-3xl">
+        <h2 className="surface-strong mt-2.5 font-display text-2xl tracking-tight sm:text-3xl">
           {title}
         </h2>
       </div>
@@ -413,10 +574,12 @@ function ProductSection({
 
   return (
     <section className={`${SHELL} ${BLOCK}`}>
-      <SectionHead eyebrow={eyebrow} title={title} href={items.length > 0 ? href : undefined} />
+      <Reveal>
+        <SectionHead eyebrow={eyebrow} title={title} href={items.length > 0 ? href : undefined} />
+      </Reveal>
 
       {query.isLoading && (
-        <div className="mt-10 grid grid-cols-2 gap-x-5 gap-y-10 lg:grid-cols-4">
+        <div className="mt-10 grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <div key={i}>
               <div className="skeleton aspect-[4/5] rounded-2xl" />
@@ -449,9 +612,17 @@ function ProductSection({
       )}
 
       {items.length > 0 && (
-        <div className="mt-10 grid grid-cols-2 gap-x-5 gap-y-10 lg:grid-cols-4">
-          {items.map((product) => (
-            <ProductCard key={product.id} product={product} />
+        <div className="mt-10 grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-4">
+          {items.map((product, i) => (
+            /*
+              Staggered by column, not by index: `i % 4` means the delay resets
+              on each row, so row three does not wait three quarters of a second
+              behind row one. Capped small — this is holding real products back
+              from a shopper who has already scrolled to them.
+            */
+            <Reveal key={product.id} delay={(i % 4) * 70}>
+              <ProductCard product={product} />
+            </Reveal>
           ))}
         </div>
       )}
@@ -466,56 +637,191 @@ function ProductSection({
  * and a square crop cuts the top off a garment or the base off a bottle. The
  * discount badge is computed rather than stored — a `compareAtPrice` above the
  * price already *is* the claim, and a second stored field could disagree with it.
+ *
+ * The card is a panel that lifts, not an image with words underneath. Every
+ * colour goes through `brand` or a `surface-*` role, so the same component is a
+ * jewellery shop's card and a hardware shop's card without knowing which.
+ *
+ * Three things appear only when the data supports them — a second photograph to
+ * cross-fade to, a rating, a low-stock line. A card that reserves room for all
+ * three and then shows none is how a catalogue ends up looking unfinished.
  */
-function ProductCard({ product }: { product: Product }) {
+export function ProductCard({ product }: { product: Product }) {
   const store = useStore();
 
   const price = Number(product.price);
   const was = product.compareAtPrice ? Number(product.compareAtPrice) : null;
   const off = was && was > price ? Math.round(((was - price) / was) * 100) : null;
 
+  const rating = Number(product.ratingAverage);
+  const hasRating = product.ratingCount > 0 && rating > 0;
+  const second = product.images[1] ?? null;
+  const soldOut = product.stock <= 0;
+  // Only worth saying when it is genuinely nearly gone; "9 left" is not urgency.
+  const scarce = !soldOut && product.stock <= 5;
+
   return (
-    <Link to={`/product/${product.slug}`} className="group block">
-      <div className="relative aspect-[4/5] overflow-hidden rounded-2xl bg-ink-50">
-        {product.images[0] ? (
-          <img
-            src={product.images[0].url}
-            alt={product.images[0].altText ?? product.name}
-            loading="lazy"
-            className="h-full w-full object-cover transition-transform duration-700 ease-out group-hover:scale-[1.06]"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center bg-gradient-to-br from-ink-50 to-ink-100 text-xs text-ink-400">
-            No image
-          </div>
-        )}
-
-        {off !== null && (
-          <span className="absolute left-3 top-3 rounded-full bg-ink-950 px-2.5 py-1 text-[11px] font-semibold text-white">
-            −{off}%
-          </span>
-        )}
-
-        {/* Slides up on hover on a pointer device; always legible on touch,
-            where hover never fires, because the card itself is the link. */}
-        <span className="pointer-events-none absolute inset-x-3 bottom-3 translate-y-3 rounded-full bg-white/95 py-2.5 text-center text-xs font-medium text-ink-950 opacity-0 backdrop-blur transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
-          View product
-        </span>
+    <div className="group relative">
+      {/*
+        Outside the <Link>, deliberately.
+        A button inside an anchor is invalid HTML and the browser resolves it by
+        dropping one of them — which is how a wishlist heart ends up navigating
+        to the product instead of saving it.
+      */}
+      <div className="absolute right-3 top-3 z-10 opacity-0 transition-opacity duration-200 focus-within:opacity-100 group-hover:opacity-100">
+        {/* The shape comes from the variant; nothing is overridden here, which
+            is what keeps the glyph centred. */}
+        <SaveButton productId={product.id} variant="icon" />
       </div>
 
-      <h3 className="surface-strong mt-4 text-sm font-medium leading-snug transition-colors group-hover:text-brand">
-        {product.name}
-      </h3>
-      <p className="mt-1.5 flex items-baseline gap-2 text-sm">
-        <span className="numeric surface-strong font-semibold">
-          {formatMoney(product.price, store.currency)}
-        </span>
-        {was && was > price && (
-          <span className="numeric surface-muted text-xs line-through">
-            {formatMoney(product.compareAtPrice!, store.currency)}
-          </span>
-        )}
-      </p>
-    </Link>
+      <Link to={`/product/${product.slug}`} className="block">
+        <div className="surface-card surface-raise overflow-hidden rounded-2xl border group-hover:-translate-y-1">
+          <div className="relative aspect-[4/5] overflow-hidden bg-ink-50">
+            {product.images[0] ? (
+              <>
+                <img
+                  src={product.images[0].url}
+                  alt={product.images[0].altText ?? product.name}
+                  loading="lazy"
+                  className={`h-full w-full object-cover transition-all duration-700 ease-out ${
+                    second ? 'group-hover:opacity-0' : 'group-hover:scale-[1.06]'
+                  }`}
+                />
+                {/* The second shot is usually the one that sells it — the back of
+                    a garment, the thing in use. Layered over the first so the
+                    swap cannot shift the grid. */}
+                {second && (
+                  <img
+                    src={second.url}
+                    alt=""
+                    aria-hidden="true"
+                    loading="lazy"
+                    className="absolute inset-0 h-full w-full object-cover opacity-0 transition-opacity duration-700 ease-out group-hover:opacity-100"
+                  />
+                )}
+              </>
+            ) : (
+              /*
+                No photograph yet.
+
+                Worth designing rather than leaving as grey with "No image" on
+                it: a new shop has no pictures on its first day, and that first
+                day is when the owner decides whether the thing looks like a
+                real shop. A tinted panel in their own colour reads as a product
+                awaiting a photo; a grey void reads as broken.
+              */
+              <div
+                className="flex h-full items-center justify-center"
+                style={{
+                  backgroundImage:
+                    'linear-gradient(135deg, rgb(var(--brand-primary) / 0.10), rgb(var(--brand-secondary) / 0.08))',
+                }}
+              >
+                <ShoppingBag
+                  size={30}
+                  strokeWidth={1.25}
+                  className="text-brand opacity-30"
+                  aria-hidden="true"
+                />
+              </div>
+            )}
+
+            <span
+              aria-hidden="true"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/30 to-transparent opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+            />
+
+            <div className="absolute left-3 top-3 flex flex-col items-start gap-1.5">
+              {off !== null && (
+                // The store's own colour: a discount is a brand moment, and this
+                // is the one badge on the card.
+                <span className="rounded-full bg-brand px-2.5 py-1 text-[11px] font-semibold text-white shadow-glow-store-sm">
+                  −{off}%
+                </span>
+              )}
+              {soldOut && (
+                <span className="rounded-full bg-ink-950/85 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur">
+                  Sold out
+                </span>
+              )}
+            </div>
+
+            <span className="pointer-events-none absolute inset-x-3 bottom-3 translate-y-3 rounded-full bg-white/95 py-2.5 text-center text-xs font-medium text-ink-950 opacity-0 shadow-raised backdrop-blur transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+              View product
+            </span>
+          </div>
+
+          <div className="p-4">
+            {product.category && (
+              <p className="surface-muted text-[11px] uppercase tracking-[0.14em]">
+                {product.category.name}
+              </p>
+            )}
+
+            <h3 className="surface-strong mt-1.5 line-clamp-2 text-sm font-medium leading-snug transition-colors group-hover:text-brand">
+              {product.name}
+            </h3>
+
+            {hasRating && (
+              <p className="mt-2 flex items-center gap-1.5">
+                <Stars value={rating} />
+                <span className="numeric surface-muted text-[11px]">({product.ratingCount})</span>
+              </p>
+            )}
+
+            <p className="mt-2.5 flex items-baseline gap-2 text-sm">
+              <span className="numeric surface-strong font-semibold">
+                {formatMoney(product.price, store.currency)}
+              </span>
+              {was && was > price && (
+                <span className="numeric surface-muted text-xs line-through">
+                  {formatMoney(product.compareAtPrice!, store.currency)}
+                </span>
+              )}
+            </p>
+
+            {scarce && (
+              <p className="numeric mt-1.5 text-[11px] font-medium text-amber-700">
+                Only {product.stock} left
+              </p>
+            )}
+          </div>
+        </div>
+      </Link>
+    </div>
+  );
+}
+
+/**
+ * A five-star row.
+ *
+ * Two overlaid rows clipped by width, rather than five individually rounded
+ * icons: a 4.3 has to look like 4.3, and rounding each star to the nearest half
+ * shows a different number from the one the product page states.
+ */
+function Stars({ value }: { value: number }) {
+  const percent = Math.max(0, Math.min(100, (value / 5) * 100));
+
+  return (
+    <span
+      className="relative inline-block leading-none"
+      role="img"
+      aria-label={`${value.toFixed(1)} out of 5`}
+    >
+      <span className="flex gap-0.5 text-ink-200">
+        {[0, 1, 2, 3, 4].map((i) => (
+          <Star key={i} size={11} fill="currentColor" strokeWidth={0} />
+        ))}
+      </span>
+      <span
+        className="absolute inset-0 flex gap-0.5 overflow-hidden text-amber-500"
+        style={{ width: `${percent}%` }}
+        aria-hidden="true"
+      >
+        {[0, 1, 2, 3, 4].map((i) => (
+          <Star key={i} size={11} fill="currentColor" strokeWidth={0} className="shrink-0" />
+        ))}
+      </span>
+    </span>
   );
 }

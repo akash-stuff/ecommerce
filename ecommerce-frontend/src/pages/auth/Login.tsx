@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
+import { Spinner } from '@/components/Spinner';
 import { useNavigate, useLocation, Link } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { AlertTriangle, ArrowLeft, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { useAuthStore } from '@/store/auth.store';
 import { apiClient, unwrap } from '@/services/api-client';
 import { CodeInput } from '@/components/CodeInput';
@@ -254,7 +255,7 @@ export default function Login() {
                 disabled={isSubmitting}
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand py-3 text-sm font-medium text-white shadow-glow transition-all hover:-translate-y-px hover:shadow-lifted focus:outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 disabled:translate-y-0 disabled:opacity-60 disabled:shadow-glow-sm"
               >
-                {isSubmitting && <Loader2 size={14} className="animate-spin" />}
+                {isSubmitting && <Spinner size={14} tone="current" />}
                 {isSubmitting ? 'Signing in…' : 'Sign in'}
               </button>
             </form>
@@ -401,7 +402,7 @@ function ResetFlow({
             disabled={busy || !email.trim()}
             className={SUBMIT}
           >
-            {busy && <Loader2 size={14} className="animate-spin" />}
+            {busy && <Spinner size={14} tone="current" />}
             {busy ? 'Sending…' : 'Send the code'}
           </button>
         </form>
@@ -452,7 +453,7 @@ function ResetFlow({
             disabled={busy || code.length < 6 || password.length < 8}
             className={SUBMIT}
           >
-            {busy && <Loader2 size={14} className="animate-spin" />}
+            {busy && <Spinner size={14} tone="current" />}
             {busy ? 'Saving…' : 'Change password and sign in'}
           </button>
 

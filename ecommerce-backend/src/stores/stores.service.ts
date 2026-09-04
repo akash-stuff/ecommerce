@@ -1,6 +1,8 @@
 import { BRAND_DEFAULTS } from '../theme/brand-defaults';
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../common/prisma/prisma.service';
+import { isStaffLoginEmail } from './staff-login-email';
+import { resolveStorePromises, toPromiseRows } from './store-promises';
 import { StoreConfigDto, StoreThemeDto } from './dto/store.dto';
 import { sanitiseCustomCss } from '../theme/css-sanitiser';
 import {
@@ -42,19 +44,51 @@ export class StoresService {
       });
     }
 
+    /**
+     * Withheld when it is a sign-in address.
+     *
+     * The column is meant to hold the shop's public "info" address, but nothing
+     * stopped it being filled with the owner's login, and on a store where that
+     * happened the footer was publishing half a credential to every visitor.
+     * Printing nothing is the safe failure: the shopkeeper is told in Settings
+     * and can put a real contact address in, and until they do the storefront
+     * simply has no email on it.
+     */
+    const publicEmail = (await isStaffLoginEmail(this.prisma, store.tenantId, store.email))
+      ? null
+      : store.email;
+
     return {
       id: store.id,
       name: store.name,
       slug: store.slug,
       description: store.description,
       currency: store.currency,
-      email: store.email,
+      email: publicEmail,
       phone: store.phone,
+      whatsappNumber: store.whatsappNumber,
       metaTitle: store.metaTitle,
       metaDescription: store.metaDescription,
       productDescription: store.productDescription,
       template: store.template ? { slug: store.template.slug, name: store.template.name } : null,
       theme: toThemeDto(store.theme),
+      /**
+       * Finished text, not raw settings.
+       *
+       * The tiles are worded here rather than in the browser because a shop can
+       * now write its own, and those arrive as finished strings — wording the
+       * derived ones client-side would leave two copies of the same sentence
+       * that drift apart the first time either is edited.
+       *
+       * Sent with the config rather than from an endpoint of its own: the
+       * storefront already fetches this once per visit and holds it, so a
+       * second round trip would buy nothing but a slower first paint.
+       */
+      promises: toPromiseRows(
+        store.theme?.promises,
+        await resolveStorePromises(this.prisma),
+        store.currency,
+      ),
     };
   }
 }

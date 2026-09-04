@@ -16,7 +16,7 @@ export default function Products() {
   });
 
   return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
+    <div className="mx-auto page-container px-6 py-10">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl tracking-tight text-ink-950">Products</h1>

@@ -183,7 +183,7 @@ function Line({ item, currency }: { item: CartItem; currency: string }) {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+    <div className="mx-auto page-container px-4 py-12 sm:px-6">
       <h1 className="font-display text-2xl tracking-tight text-ink-950">Your cart</h1>
       <div className="mt-8">{children}</div>
     </div>

@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Loader2, Minus, Plus } from 'lucide-react';
+import { Spinner } from '@/components/Spinner';
+import { Minus, Plus } from 'lucide-react';
 
 /**
  * Choosing which part of a picture survives.
@@ -285,7 +286,7 @@ export function CropDialog({
                 )}
                 {!bitmap && !failed && (
                   <span className="absolute inset-0 flex items-center justify-center">
-                    <Loader2 size={18} className="animate-spin text-ink-400" />
+                    <Spinner size={18} label="Uploading" />
                   </span>
                 )}
               </div>

@@ -23,6 +23,7 @@ export interface TemplateLook {
 
 export const SECTION_LABELS: Record<string, string> = {
   hero: 'Hero banner',
+  promise: 'Delivery & payment strip',
   featured: 'Featured products',
   categories: 'Category grid',
   newArrivals: 'New arrivals',
@@ -159,6 +160,24 @@ function Section({
             >
               <span className="h-[3px] w-3/5 rounded-full bg-white/70" />
             </div>
+          ))}
+        </div>
+      );
+
+    /*
+      A row of small marks rather than blocks: the real section is icon-and-two-
+      lines repeated, and drawing it as filled rectangles would make it read as
+      another product grid in a preview this small.
+    */
+    case 'promise':
+      return (
+        <div className="flex shrink-0 items-center gap-2 rounded px-1.5 py-1"
+             style={{ background: secondary, opacity: 0.18 }}>
+          {[0, 1, 2].map((i) => (
+            <span key={i} className="flex flex-1 items-center gap-1">
+              <span className="h-[4px] w-[4px] shrink-0 rounded-full" style={{ background: primary }} />
+              <span className="h-[3px] flex-1 rounded-full bg-white/85" />
+            </span>
           ))}
         </div>
       );

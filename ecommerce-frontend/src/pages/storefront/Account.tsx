@@ -1,7 +1,8 @@
 import { useState } from 'react';
+import { Spinner } from '@/components/Spinner';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, Loader2 } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { customerService } from '@/services/customer.service';
 import { filenameFromDisposition, saveBlob } from '@/utils/download';
 import { useCustomerStore } from '@/store/customer.store';
@@ -201,7 +202,7 @@ function OrderCard({
           className="inline-flex items-center gap-1.5 text-xs font-medium text-ink-900 underline disabled:opacity-40"
         >
           {downloading ? (
-            <Loader2 size={12} className="animate-spin" />
+            <Spinner size={12} tone="current" />
           ) : (
             <Download size={12} />
           )}

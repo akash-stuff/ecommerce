@@ -28,7 +28,7 @@ export function Page({
           exactly that tall; from lg up the sidebar is permanent and there is no
           bar to clear. */}
       <div className="sticky top-14 z-20 border-b border-ink-100 bg-ink-50/85 backdrop-blur lg:top-0">
-        <div className="mx-auto flex max-w-6xl flex-wrap items-end justify-between gap-4 px-4 py-5 sm:px-6 sm:py-6">
+        <div className="mx-auto flex page-container flex-wrap items-end justify-between gap-4 px-4 py-5 sm:px-6 sm:py-6">
           <div className="min-w-0">
             {back && (
               <Link
@@ -48,7 +48,7 @@ export function Page({
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 sm:py-8">{children}</div>
+      <div className="mx-auto page-container px-4 py-6 sm:px-6 sm:py-8">{children}</div>
     </div>
   );
 }

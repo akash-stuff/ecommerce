@@ -6,6 +6,7 @@ import type {
   BannerPlacement,
   Category,
   CategoryNode,
+  CategoryTile,
   Coupon,
   InventoryTransaction,
   PaginationMeta,
@@ -41,6 +42,9 @@ export const categoryService = {
     paged<Category>(apiClient.get('/categories', { params })),
 
   tree: () => unwrap<CategoryNode[]>(apiClient.get('/categories/tree')),
+
+  /** Public. Top-level categories with counts and real discount ranges. */
+  showcase: () => unwrap<CategoryTile[]>(apiClient.get('/categories/showcase')),
 
   create: (payload: Partial<Category>) =>
     unwrap<Category>(apiClient.post('/categories', payload)),

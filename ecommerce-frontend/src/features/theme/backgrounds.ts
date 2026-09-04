@@ -186,11 +186,22 @@ export function surfaceForImage(url: string, fit: string): Surface {
   };
 }
 
-/** Header logo heights. Tailwind classes, so they stay responsive. */
+/**
+ * Header logo heights. Tailwind classes, so they stay responsive.
+ *
+ * The header row is a `min-h`, not a fixed height, so `lg` is allowed to be
+ * genuinely large: it grows the bar rather than being clipped by it. Before
+ * that it could not be — the row was pinned to 80px, so every step above
+ * roughly `h-14` rendered identically and picking "Large" appeared to do
+ * nothing.
+ *
+ * Only `lg` was raised. `md` is the default every store gets without choosing,
+ * so changing it would redesign the header of every shop that never asked.
+ */
 export const LOGO_HEIGHT: Record<string, string> = {
   sm: 'h-7 sm:h-8',
   md: 'h-9 sm:h-11',
-  lg: 'h-12 sm:h-14',
+  lg: 'h-14 sm:h-[4.5rem]',
 };
 
 /** What the admin calls each preset, and a one-line description of it. */

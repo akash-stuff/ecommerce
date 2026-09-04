@@ -5,6 +5,8 @@ import { sanitiseCustomCss } from './css-sanitiser';
 import { AuditService } from '../audit/audit.service';
 import { ApplyTemplateDto, UpdateStorefrontDto, UpdateThemeDto } from './dto/theme.dto';
 import { templateLook } from './template-look';
+import { isStaffLoginEmail } from '../stores/staff-login-email';
+import { RequestContextStore } from '../common/context/request-context';
 
 @Injectable()
 export class ThemeService {
@@ -78,6 +80,25 @@ export class ThemeService {
     }
     if (dto.homepageLayout !== undefined) {
       data.homepageLayout = dto.homepageLayout as Prisma.InputJsonValue;
+    }
+    if (dto.promises !== undefined) {
+      /*
+        Trimmed, and rows that are blank after trimming are dropped.
+
+        The admin form always sends its full set of rows, so an untouched empty
+        row arrives as `{ icon: 'truck', title: '', detail: '' }` rather than
+        not arriving at all. Storing those would put empty tiles on the
+        homepage; dropping them here means "cleared the fields" and "removed
+        the row" do the same thing, which is what someone clearing the fields
+        meant.
+      */
+      data.promises = dto.promises
+        .map((row) => ({
+          icon: row.icon,
+          title: row.title.trim(),
+          detail: row.detail.trim(),
+        }))
+        .filter((row) => row.title !== '' && row.detail !== '') as Prisma.InputJsonValue;
     }
 
     if (dto.customCss !== undefined) {
@@ -236,7 +257,7 @@ export class ThemeService {
     return updated;
   }
 
-  updateStorefront(dto: UpdateStorefrontDto) {
+  async updateStorefront(dto: UpdateStorefrontDto) {
     const data = { ...dto } as Prisma.StoreUncheckedUpdateInput;
 
     /**
@@ -263,6 +284,7 @@ export class ThemeService {
      */
     const clearable = [
       'phone',
+      'whatsappNumber',
       'addressLine1',
       'addressLine2',
       'city',
@@ -275,7 +297,28 @@ export class ThemeService {
       if (value !== undefined) data[field] = value.trim() || null;
     }
 
-    if (dto.email !== undefined) data.email = dto.email.trim();
+    if (dto.email !== undefined) {
+      const email = dto.email.trim();
+
+      /**
+       * Refused when it is an address someone signs in with.
+       *
+       * This one is printed in the storefront footer and at the foot of every
+       * order email, so setting it to a login publishes half a credential to
+       * every shopper — and points phishing at the account that can change
+       * where the money goes. Caught here rather than in the DTO because it
+       * needs the store's staff list, which validation cannot see.
+       */
+      if (await isStaffLoginEmail(this.prisma, RequestContextStore.requireTenantId(), email)) {
+        throw new BadRequestException({
+          message:
+            'That address is used to sign in to this store, and shoppers can see this one. Use a public address such as info@ or hello@ instead.',
+          code: 'PUBLIC_EMAIL_IS_A_LOGIN',
+        });
+      }
+
+      data.email = email;
+    }
 
     return this.get().then((store) =>
       this.prisma.db.store.update({ where: { id: store.id }, data }),

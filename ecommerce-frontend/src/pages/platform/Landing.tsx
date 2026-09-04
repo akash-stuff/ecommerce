@@ -304,7 +304,7 @@ function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-50 border-b border-ink-100/80 bg-white/85 backdrop-blur">
-      <div className="mx-auto flex max-w-6xl items-center justify-between gap-6 px-5 py-3.5 sm:px-8">
+      <div className="mx-auto flex page-container items-center justify-between gap-6 px-5 py-3.5 sm:px-8">
         <a href="#top" aria-label="Everystore, back to top">
           <Lockup tagline />
         </a>
@@ -581,7 +581,7 @@ export default function Landing() {
       <main>
         {/* --- Hero ------------------------------------------------------- */}
         <section className="relative overflow-hidden bg-leaf-wash">
-          <div className="mx-auto max-w-6xl px-5 pb-16 pt-14 sm:px-8 sm:pt-20">
+          <div className="mx-auto page-container px-5 pb-16 pt-14 sm:px-8 sm:pt-20">
             <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)] lg:gap-10">
               <div>
                 <p className="inline-flex items-center gap-2 rounded-full border border-leaf-600/20 bg-white/70 px-3 py-1 text-xs font-medium tracking-wide text-leaf-700 backdrop-blur">
@@ -670,7 +670,7 @@ export default function Landing() {
 
         {/* --- Features --------------------------------------------------- */}
         <section id="features" className="scroll-mt-24 border-t border-ink-100 bg-white">
-          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8">
+          <div className="mx-auto page-container px-5 py-20 sm:px-8">
             <SectionHead
               title="Everything You Need to Build & Grow"
               subtitle="A complete eCommerce solution under your own brand."
@@ -699,7 +699,7 @@ export default function Landing() {
 
         {/* --- How it works ----------------------------------------------- */}
         <section id="how" className="scroll-mt-24 border-t border-ink-100 bg-white">
-          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8">
+          <div className="mx-auto page-container px-5 py-20 sm:px-8">
             <SectionHead
               title="From Nothing to Trading"
               subtitle="Three steps, and the shop is taking orders under its own name."
@@ -734,7 +734,7 @@ export default function Landing() {
             owner arranged. Between them they make the white-label argument
             without the page having to assert it again. */}
         <section className="border-t border-ink-100 bg-leaf-50/50">
-          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8">
+          <div className="mx-auto page-container px-5 py-20 sm:px-8">
             <SectionHead
               title="Every Store, Entirely Its Own"
               subtitle="A shopper sees the shop — its address, its branding, its products. Never the platform underneath."
@@ -765,7 +765,7 @@ export default function Landing() {
             argument lands: everything a shopper touches carries the shop's
             name, down to the box it arrives in. */}
         <section className="bg-leaf-900">
-          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8">
+          <div className="mx-auto page-container px-5 py-20 sm:px-8">
             <div className="grid items-center gap-12 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-leaf-300">
@@ -797,7 +797,7 @@ export default function Landing() {
 
         {/* --- Contact ---------------------------------------------------- */}
         <section id="contact" className="scroll-mt-24 border-t border-ink-100 bg-white">
-          <div className="mx-auto max-w-6xl px-5 py-20 sm:px-8">
+          <div className="mx-auto page-container px-5 py-20 sm:px-8">
             <div className="grid gap-10 lg:grid-cols-[minmax(0,22rem)_minmax(0,1fr)] lg:gap-16">
               <div>
                 <p className="inline-flex items-center gap-2 rounded-full border border-leaf-600/20 bg-leaf-50 px-3 py-1 text-xs font-medium tracking-wide text-leaf-700">
@@ -827,7 +827,7 @@ export default function Landing() {
       </main>
 
       <footer className="border-t border-ink-100 bg-white">
-        <div className="mx-auto flex max-w-6xl flex-col gap-6 px-5 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-8">
+        <div className="mx-auto flex page-container flex-col gap-6 px-5 py-10 sm:flex-row sm:items-center sm:justify-between sm:px-8">
           <Lockup tagline />
           <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-ink-600">
             {NAV.map((item) => (
@@ -841,7 +841,7 @@ export default function Landing() {
           </nav>
         </div>
         <div className="border-t border-ink-100">
-          <p className="mx-auto max-w-6xl px-5 py-5 text-xs text-ink-500 sm:px-8">
+          <p className="mx-auto page-container px-5 py-5 text-xs text-ink-500 sm:px-8">
             Everystore — white-label commerce.
           </p>
         </div>

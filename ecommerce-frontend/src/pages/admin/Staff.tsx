@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { Spinner } from '@/components/Spinner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Copy, KeyRound, Loader2, Trash2, UserPlus, Users } from 'lucide-react';
+import { Check, Copy, KeyRound, Trash2, UserPlus, Users } from 'lucide-react';
 import { staffService, type StaffMember } from '@/services/admin.service';
 import {
   Card,
@@ -178,7 +179,7 @@ export default function Staff() {
               className="rounded p-1 text-ink-400 transition-colors hover:bg-ink-100 hover:text-ink-800 disabled:opacity-50"
             >
               {reset.isPending && reset.variables?.id === s.id ? (
-                <Loader2 size={14} className="animate-spin" />
+                <Spinner size={14} tone="current" />
               ) : (
                 <KeyRound size={14} />
               )}

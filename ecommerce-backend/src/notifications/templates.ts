@@ -27,6 +27,7 @@
  */
 import {
   codeBlock,
+  contactTail,
   cta,
   divider,
   eyebrow,
@@ -67,7 +68,7 @@ export interface RenderedEmail {
 
 export interface OrderEmailData {
   storeName: string;
-  storeEmail: string;
+  storeEmail: string | null;
   brandColor: string;
   orderNumber: string;
   customerName: string;
@@ -100,7 +101,7 @@ export interface OrderEmailData {
  * back to defaults in another.
  */
 function resolveBrand(
-  data: { storeName: string; storeEmail: string; brandColor?: string },
+  data: { storeName: string; storeEmail: string | null; brandColor?: string },
   brand?: EmailBrand,
 ): EmailBrand {
   const source = brand ?? {
@@ -114,6 +115,34 @@ function resolveBrand(
   // Normalised here rather than trusted, because a row written by a seed, a
   // migration or an older build never passed through the API's validation.
   return { ...source, brandColor: safeHex(source.brandColor) };
+}
+
+/**
+ * The end of a sign-off: " or write to hello@shop.com", or a route that is not
+ * an address, or nothing at all.
+ *
+ * The shop's contact address is withheld when it turns out to be one someone
+ * signs in with (`isStaffLoginEmail`), and an order email is the last place it
+ * should surface: the rendered body is stored so a failed send can be replayed,
+ * which is right for a receipt and wrong for half a credential.
+ *
+ * The clause is built rather than the address interpolated, so a withheld one
+ * leaves "Reply to this email." — a whole sentence — instead of a line that
+ * trails off into a full stop.
+ */
+function writeToClause(store: EmailBrand): { html: string; text: string } {
+  const tail = contactTail(store);
+  if (!tail) return { html: '', text: '' };
+
+  // The fallback is a URL, and "write to" a URL reads as nonsense.
+  const verb = store.storeEmail ? 'write to' : 'visit';
+  return { html: ` or ${verb} ${escapeHtml(tail)}`, text: ` or ${verb} ${tail}` };
+}
+
+/** "Store · how to reach it" for a text part, minus whatever is withheld. */
+function signature(store: EmailBrand): string {
+  const tail = contactTail(store);
+  return tail ? `${store.storeName} · ${tail}` : store.storeName;
 }
 
 /** Currency is formatted server-side so the email matches the invoice exactly. */
@@ -193,7 +222,7 @@ export function orderConfirmation(data: OrderEmailData, brand?: EmailBrand): Ren
         spacer(28) +
         divider() +
         spacer(20) +
-        small(`Questions about this order? Reply to this email or write to ${e(store.storeEmail)}.`) +
+        small(`Questions about this order? Reply to this email${writeToClause(store).html}.`) +
         spacer(32),
     ],
   });
@@ -223,7 +252,7 @@ export function orderConfirmation(data: OrderEmailData, brand?: EmailBrand): Ren
     ``,
     `Payment: ${data.paymentMethod}`,
     ``,
-    `Questions? Contact ${data.storeEmail}.`,
+    `Questions about this order? Reply to this email${writeToClause(store).text}.`,
   ].join('\n');
 
   return {
@@ -238,7 +267,7 @@ export function orderConfirmation(data: OrderEmailData, brand?: EmailBrand): Ren
 
 export interface StatusEmailData {
   storeName: string;
-  storeEmail: string;
+  storeEmail: string | null;
   orderNumber: string;
   customerName: string;
   status: string;
@@ -356,7 +385,7 @@ export function orderStatusChanged(data: StatusEmailData, brand?: EmailBrand): R
         spacer(28) +
         divider() +
         spacer(20) +
-        small(`Questions? Reply to this email or write to ${e(store.storeEmail)}.`) +
+        small(`Questions? Reply to this email${writeToClause(store).html}.`) +
         spacer(32),
     ],
   });
@@ -379,7 +408,7 @@ export function orderStatusChanged(data: StatusEmailData, brand?: EmailBrand): R
         ]
       : []),
     ``,
-    `${data.storeName} · ${data.storeEmail}`,
+    signature(store),
   ].join('\n');
 
   return {
@@ -390,7 +419,7 @@ export function orderStatusChanged(data: StatusEmailData, brand?: EmailBrand): R
 }
 
 export function customerWelcome(
-  data: { storeName: string; storeEmail: string; customerName: string },
+  data: { storeName: string; storeEmail: string | null; customerName: string },
   brand?: EmailBrand,
 ): RenderedEmail {
   const e = escapeHtml;
@@ -413,7 +442,7 @@ export function customerWelcome(
         spacer(28) +
         divider() +
         spacer(20) +
-        small(`Questions? Reply to this email or write to ${e(store.storeEmail)}.`) +
+        small(`Questions? Reply to this email${writeToClause(store).html}.`) +
         spacer(32),
     ],
   });
@@ -423,7 +452,7 @@ export function customerWelcome(
     ``,
     `Your ${data.storeName} account is ready.`,
     ``,
-    `${data.storeName} · ${data.storeEmail}`,
+    signature(store),
   ].join('\n');
 
   return { subject: subjectSafe(`Welcome to ${data.storeName}`), html, text };
@@ -439,7 +468,7 @@ export function customerWelcome(
 export function emailVerificationCode(
   data: {
     storeName: string;
-    storeEmail: string;
+    storeEmail: string | null;
     code: string;
     expiresInMinutes: number;
   },
@@ -483,7 +512,7 @@ export function emailVerificationCode(
     `It expires in ${data.expiresInMinutes} minutes.`,
     `If you did not ask for this, ignore this email — no account is created until the code is entered.`,
     ``,
-    `${data.storeName} · ${data.storeEmail}`,
+    signature(store),
   ].join('\n');
 
   return {
@@ -616,7 +645,7 @@ export function storeSetup(
 export function passwordResetCode(
   data: {
     storeName: string;
-    storeEmail: string;
+    storeEmail: string | null;
     code: string;
     expiresInMinutes: number;
   },
@@ -660,7 +689,7 @@ export function passwordResetCode(
     `It expires in ${data.expiresInMinutes} minutes.`,
     `If you did not ask for this, ignore this email - your password has not changed.`,
     ``,
-    `${data.storeName} · ${data.storeEmail}`,
+    signature(store),
   ].join('\n');
 
   return {
@@ -680,7 +709,7 @@ export function passwordResetCode(
  * so that is what it offers.
  */
 export function newsletterWelcome(
-  data: { storeName: string; storeEmail: string; alreadySubscribed: boolean },
+  data: { storeName: string; storeEmail: string | null; alreadySubscribed: boolean },
   brand?: EmailBrand,
 ): RenderedEmail {
   const e = escapeHtml;
@@ -720,7 +749,7 @@ export function newsletterWelcome(
     ``,
     `Want off it? Reply to this email and the store will take you off.`,
     ``,
-    `${data.storeName} · ${data.storeEmail}`,
+    signature(store),
   ].join('\n');
 
   return { subject: subjectSafe(`You are on the ${data.storeName} list`), html, text };
@@ -742,7 +771,7 @@ export function newsletterWelcome(
 export function staffInvited(
   data: {
     storeName: string;
-    storeEmail: string;
+    storeEmail: string | null;
     firstName: string;
     role: string;
     signInUrl: string;
@@ -775,7 +804,7 @@ export function staffInvited(
         spacer(28) +
         divider() +
         spacer(20) +
-        small(`Questions? Reply to this email or write to ${e(store.storeEmail)}.`) +
+        small(`Questions? Reply to this email${writeToClause(store).html}.`) +
         spacer(32),
     ],
   });
@@ -789,7 +818,7 @@ export function staffInvited(
     `Your administrator will give you the password separately - it is`,
     `deliberately not sent by email.`,
     ``,
-    `${data.storeName} · ${data.storeEmail}`,
+    signature(store),
   ].join('\n');
 
   return { subject: subjectSafe(`Your ${data.storeName} account`), html, text };

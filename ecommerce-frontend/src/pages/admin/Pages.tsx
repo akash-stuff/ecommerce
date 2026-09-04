@@ -1,15 +1,17 @@
 import { useRef, useState } from 'react';
+import { Spinner } from '@/components/Spinner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ExternalLink,
   FileText,
   ImagePlus,
-  Loader2,
   Trash2,
   Upload,
   X,
 } from 'lucide-react';
 import { apiClient, unwrap } from '@/services/api-client';
+import { tenantUrl } from '@/config/env';
+import { useAuthStore } from '@/store/auth.store';
 import { mediaService } from '@/services/admin.service';
 import { ImageUpload } from '@/components/admin/ImageUpload';
 import {
@@ -82,6 +84,19 @@ function slugify(value: string): string {
 
 export default function Pages() {
   const queryClient = useQueryClient();
+  /**
+   * Where this store's storefront actually lives.
+   *
+   * Null for a session with no tenant — a platform admin — in which case the
+   * addresses below are shown as text. `tenantUrl` builds the platform
+   * subdomain rather than a custom domain on purpose: the subdomain resolves
+   * for every store from the moment it is created, whereas a custom domain may
+   * be unverified, half-configured or absent, and a preview link that 404s is
+   * worse than no link.
+   */
+  const storefrontOrigin = useAuthStore((s) =>
+    s.user?.tenantSlug ? tenantUrl(s.user.tenantSlug) : null,
+  );
   const [page, setPage] = useState(1);
   const [draft, setDraft] = useState<Draft | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<PageRow | null>(null);
@@ -186,11 +201,21 @@ export default function Pages() {
     {
       header: 'Address',
       cell: (p) => (
-        // Linked, because "is this page actually live" is answered by opening
-        // it, and a draft has nothing to open.
-        p.isPublished ? (
+        /*
+          Linked, because "is this page actually live" is answered by opening
+          it, and a draft has nothing to open.
+
+          The href has to be absolute and on the *store's* hostname. A relative
+          `/about-us` resolves against the admin console's own host, which has
+          no storefront on it — the platform's own routes answer there instead,
+          so every one of these links opened a platform page rather than the
+          page the row is about. The tenant is not in this app's URL at all
+          (the backend takes it from the Host header); it comes from the JWT,
+          which is what `tenantSlug` is.
+        */
+        p.isPublished && storefrontOrigin ? (
           <a
-            href={`/${p.slug}`}
+            href={`${storefrontOrigin}/${p.slug}`}
             target="_blank"
             rel="noreferrer"
             className="group inline-flex items-center gap-1.5 font-mono text-xs text-ink-600 transition-colors hover:text-ink-950"
@@ -199,6 +224,9 @@ export default function Pages() {
             <ExternalLink size={11} className="opacity-0 transition-opacity group-hover:opacity-100" />
           </a>
         ) : (
+          // Unpublished, or a session with no store to open — a platform admin
+          // browsing a tenant's pages has no tenant hostname to send them to,
+          // and a link that goes to the wrong shop is worse than plain text.
           <span className="font-mono text-xs text-ink-400">/{p.slug}</span>
         )
       ),
@@ -225,7 +253,7 @@ export default function Pages() {
             className="inline-flex items-center gap-1.5 text-xs underline disabled:opacity-50"
           >
             {open.isPending && open.variables?.id === p.id && (
-              <Loader2 size={11} className="animate-spin" />
+              <Spinner size={11} tone="current" />
             )}
             Edit
           </button>
@@ -611,7 +639,7 @@ function PageGallery({
         >
           {uploading ? (
             <>
-              <Loader2 size={18} className="animate-spin text-ink-400" />
+              <Spinner size={18} label="Uploading" />
               <p className="numeric mt-2 text-xs text-ink-500">
                 Uploading {uploading.done + 1} of {uploading.total}…
               </p>

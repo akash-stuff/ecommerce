@@ -105,6 +105,18 @@
   .surface-dark .surface-line {
     border-color: rgb(255 255 255 / 0.10);
   }
+  /* Elevation on a dark ground: a rim of light, not a pool of shadow. */
+  .surface-dark .surface-card {
+    background-color: rgb(255 255 255 / 0.05);
+    border-color: rgb(255 255 255 / 0.12);
+    box-shadow: none;
+    backdrop-filter: blur(12px);
+  }
+  .surface-dark .surface-raise:hover {
+    background-color: rgb(255 255 255 / 0.09);
+    border-color: rgb(255 255 255 / 0.22);
+    box-shadow: none;
+  }
 }
 
 @layer utilities {
@@ -128,6 +140,26 @@
   }
   .surface-line {
     @apply border-ink-100;
+  }
+
+  /*
+   * A lifted panel. `surface` says what colour a thing is; this says how far
+   * off the page it sits.
+   *
+   * It is a separate role because depth has to be spent differently on the two
+   * grounds: a soft dark shadow is what reads as "raised" on a light page and
+   * is completely invisible on a dark one, where a rim of light is the only
+   * thing separating a panel from the background. Components ask for elevation
+   * and the surface decides how to pay for it.
+   */
+  .surface-card {
+    @apply border-ink-100 bg-white shadow-card;
+  }
+  .surface-raise {
+    @apply transition-all duration-300;
+  }
+  .surface-raise:hover {
+    @apply shadow-lifted;
   }
 
   /* One rule for a placeholder block, so a loading table and a loading card
@@ -526,4 +558,283 @@
   .cta-on-dark:active:not(:disabled) {
     transform: none;
   }
+}
+
+/* ---------------------------------------------------------------------------
+   The page width, matching Bootstrap 5's `.container` exactly.
+   ---------------------------------------------------------------------------
+   A stepped ladder rather than one max-width, because that is what Bootstrap's
+   container is: it holds a fixed width across a range and only grows at each
+   breakpoint. A single `max-width` matches it at one viewport and nowhere else.
+
+   Written by hand rather than through Tailwind's `container`, which cannot
+   express it — Tailwind ties each max-width to the breakpoint of the same
+   value, while Bootstrap decouples them: 540px applies from 576px, 1140px from
+   1200px. Those mismatched pairs are the point, not a mistake.
+
+   Deliberately OUTSIDE `@layer utilities`. Inside it, Tailwind emitted the base
+   rule and dropped every media query with it, leaving the container full-bleed
+   at all sizes — the layer keeps the class but does not carry its nested
+   at-rules through.
+
+   Horizontal padding is not set here. Bootstrap's is 0.75rem a side; this app
+   uses 1rem rising to 2rem and each call site keeps its own. What is matched is
+   the width.
+   --------------------------------------------------------------------------- */
+.page-container {
+  width: 100%;
+  margin-inline: auto;
+}
+@media (min-width: 576px) {
+  .page-container { max-width: 540px; }
+}
+@media (min-width: 768px) {
+  .page-container { max-width: 720px; }
+}
+@media (min-width: 992px) {
+  .page-container { max-width: 960px; }
+}
+@media (min-width: 1200px) {
+  .page-container { max-width: 1140px; }
+}
+@media (min-width: 1400px) {
+  .page-container { max-width: 1320px; }
+}
+
+/* ---------------------------------------------------------------------------
+   Authored page content.
+
+   `CmsPage` has always put `.cms-content` on the block it renders the store's
+   HTML into, and the class has never existed — so every page the feature can
+   produce arrived unstyled. Tailwind's preflight strips the browser's own
+   defaults, which means an author writing the exact markup the editor suggests
+   in its placeholder, `<h2>About us</h2><p>…</p>`, got two identical lines of
+   16px text with no spacing, no hierarchy and no bullets on their lists.
+
+   So this is the stylesheet for markup nobody here writes. It has to cover
+   every tag the server's allowlist lets through rather than the handful a
+   particular page happens to use, because the author cannot add a class and
+   has no way to fix it from their end if a tag is missed.
+
+   Not `@layer components`: same reason `.page-container` sits outside a layer.
+   Element selectors this generic inside a layer lose to any utility, and the
+   point is to style markup that carries no classes at all.
+   --------------------------------------------------------------------------- */
+.cms-content {
+  color: theme('colors.ink.700');
+  font-size: 1rem;
+  line-height: 1.75;
+}
+
+/* Headings. The display face and tight tracking are what the rest of the
+   storefront uses for a section head, so an authored page reads as part of the
+   shop rather than as a document someone pasted into it. */
+.cms-content h1,
+.cms-content h2 {
+  font-family: theme('fontFamily.display');
+  color: theme('colors.ink.950');
+  font-size: 1.5rem;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+  margin-top: 3.5rem;
+  margin-bottom: 1rem;
+}
+@media (min-width: 640px) {
+  .cms-content h1,
+  .cms-content h2 { font-size: 1.875rem; }
+}
+
+.cms-content h3 {
+  font-family: theme('fontFamily.display');
+  color: theme('colors.ink.950');
+  font-size: 1.125rem;
+  line-height: 1.4;
+  letter-spacing: -0.01em;
+  margin-top: 2.5rem;
+  margin-bottom: 0.75rem;
+}
+.cms-content h4,
+.cms-content h5,
+.cms-content h6 {
+  color: theme('colors.ink.950');
+  font-size: 1rem;
+  font-weight: 600;
+  margin-top: 2rem;
+  margin-bottom: 0.5rem;
+}
+
+/* A heading first in the flow must not push the whole page down: the shell
+   already set the space above it. */
+.cms-content > :first-child { margin-top: 0; }
+.cms-content > :last-child { margin-bottom: 0; }
+
+.cms-content p { margin-bottom: 1.25rem; }
+
+.cms-content ul,
+.cms-content ol {
+  margin-bottom: 1.25rem;
+  padding-left: 1.5rem;
+}
+.cms-content ul { list-style: disc; }
+.cms-content ol { list-style: decimal; }
+.cms-content li { margin-bottom: 0.5rem; }
+.cms-content li::marker { color: rgb(var(--brand-primary) / 0.7); }
+/* A nested list is a sub-point, not a new block. */
+.cms-content li > ul,
+.cms-content li > ol { margin-top: 0.5rem; margin-bottom: 0.5rem; }
+
+.cms-content a {
+  color: rgb(var(--brand-primary));
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+.cms-content a:hover { text-decoration-thickness: 2px; }
+
+.cms-content strong, .cms-content b { color: theme('colors.ink.950'); font-weight: 600; }
+.cms-content em, .cms-content i { font-style: italic; }
+
+.cms-content blockquote {
+  margin: 2rem 0;
+  padding-left: 1.25rem;
+  border-left: 2px solid rgb(var(--brand-primary));
+  font-style: italic;
+  color: theme('colors.ink.700');
+}
+
+.cms-content hr {
+  margin: 3rem 0;
+  border: 0;
+  border-top: 1px solid theme('colors.ink.100');
+}
+
+/* An image the author placed in the flow, as opposed to the gallery below. */
+.cms-content img {
+  display: block;
+  width: 100%;
+  height: auto;
+  margin: 2rem 0;
+  border-radius: theme('borderRadius.card');
+}
+.cms-content figure { margin: 2rem 0; }
+.cms-content figure img { margin: 0; }
+.cms-content figcaption {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: theme('colors.ink.500');
+}
+
+/* Tables are in the allowlist, so a store will eventually paste one — usually
+   a size chart or a delivery matrix. `block` + scroll on the wrapper is the
+   only thing that keeps a wide one from widening the whole page on a phone. */
+.cms-content table {
+  display: block;
+  overflow-x: auto;
+  width: 100%;
+  margin: 2rem 0;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+.cms-content th,
+.cms-content td {
+  border: 1px solid theme('colors.ink.100');
+  padding: 0.625rem 0.875rem;
+  text-align: left;
+}
+.cms-content th {
+  background-color: theme('colors.ink.50');
+  color: theme('colors.ink.950');
+  font-weight: 600;
+}
+
+.cms-content code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.875em;
+  background-color: theme('colors.ink.50');
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.375rem;
+}
+.cms-content pre {
+  margin: 2rem 0;
+  padding: 1rem 1.25rem;
+  overflow-x: auto;
+  border-radius: theme('borderRadius.card');
+  background-color: theme('colors.ink.50');
+  font-size: 0.875rem;
+}
+.cms-content pre code { background: none; padding: 0; }
+
+/* The dark storefront. Same rules, inverted — kept next to the light ones so a
+   tag added above is obviously missing a counterpart here. */
+.surface-dark .cms-content { color: theme('colors.ink.300'); }
+.surface-dark .cms-content h1,
+.surface-dark .cms-content h2,
+.surface-dark .cms-content h3,
+.surface-dark .cms-content h4,
+.surface-dark .cms-content h5,
+.surface-dark .cms-content h6,
+.surface-dark .cms-content strong,
+.surface-dark .cms-content b { color: #fff; }
+.surface-dark .cms-content blockquote { color: theme('colors.ink.200'); }
+.surface-dark .cms-content figcaption { color: theme('colors.ink.400'); }
+.surface-dark .cms-content hr { border-top-color: rgb(255 255 255 / 0.12); }
+.surface-dark .cms-content th,
+.surface-dark .cms-content td { border-color: rgb(255 255 255 / 0.12); }
+.surface-dark .cms-content th { background-color: rgb(255 255 255 / 0.06); color: #fff; }
+.surface-dark .cms-content code,
+.surface-dark .cms-content pre { background-color: rgb(255 255 255 / 0.06); }
+
+/* ---------------------------------------------------------------------------
+   The loading spinner.
+
+   Declared here for the same reason the shimmer above is: Tailwind only emits
+   keyframes that an `animation-*` utility claims, and these are applied by a
+   component's own class rather than through the theme.
+
+   Two animations rather than one. A ring that only rotates is a rotating ring —
+   at a constant arc length the eye reads it as a wheel and stops finding it
+   interesting. Growing and shrinking the arc while it turns is what makes it
+   read as something working rather than something looping.
+   --------------------------------------------------------------------------- */
+@keyframes spinner-rotate {
+  to { transform: rotate(360deg); }
+}
+
+/* The stroke is 88 units around (2πr, r=14), so the dash pattern is written
+   against that total. Offsetting as it grows keeps the tail moving instead of
+   pinning one end while the other travels. */
+@keyframes spinner-dash {
+  0%   { stroke-dasharray: 2 86;  stroke-dashoffset: 0; }
+  50%  { stroke-dasharray: 55 33; stroke-dashoffset: -20; }
+  100% { stroke-dasharray: 2 86;  stroke-dashoffset: -86; }
+}
+
+.spinner-rotate {
+  transform-origin: center;
+  animation: spinner-rotate 1.6s linear infinite;
+}
+.spinner-arc {
+  transform-origin: center;
+  animation: spinner-dash 1.6s ease-in-out infinite;
+}
+
+/*
+  Reduced motion gets a pulse, not stillness.
+
+  Removing the animation entirely would leave a static ring that says nothing —
+  the person still needs to know the page is working. A slow opacity fade
+  carries that without anything travelling across the screen, which is the part
+  that causes trouble.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .spinner-rotate { animation: none; }
+  .spinner-arc {
+    animation: spinner-pulse 1.4s ease-in-out infinite;
+    stroke-dasharray: 55 33;
+  }
+}
+@keyframes spinner-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1; }
 }

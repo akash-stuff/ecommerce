@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { Spinner } from '@/components/Spinner';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, Loader2, Mail, Trash2 } from 'lucide-react';
+import { Download, Mail, Trash2 } from 'lucide-react';
 import {
   subscriberService,
   type NewsletterSubscriber,
@@ -112,7 +113,7 @@ export default function Subscribers() {
               className="inline-flex items-center gap-1.5 text-xs underline disabled:opacity-50"
             >
               {optOut.isPending && optOut.variables?.id === s.id && (
-                <Loader2 size={11} className="animate-spin" />
+                <Spinner size={11} tone="current" />
               )}
               Take off
             </button>
@@ -149,7 +150,7 @@ export default function Subscribers() {
           disabled={download.isPending || nothingAtAll}
           onClick={() => download.mutate()}
         >
-          {download.isPending ? <Loader2 size={13} className="animate-spin" /> : <Download size={13} />}
+          {download.isPending ? <Spinner size={13} tone="current" /> : <Download size={13} />}
           Export CSV
         </SecondaryButton>
       }

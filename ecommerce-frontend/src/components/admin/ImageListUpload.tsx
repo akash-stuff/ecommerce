@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { ArrowLeft, ArrowRight, ImagePlus, Link2, Loader2, Upload, X } from 'lucide-react';
+import { Spinner } from '@/components/Spinner';
+import { ArrowLeft, ArrowRight, ImagePlus, Link2, Upload, X } from 'lucide-react';
 import { mediaService } from '@/services/admin.service';
 import { ASPECTS } from './ImageUpload';
 import { CropDialog } from './CropDialog';
@@ -199,7 +200,7 @@ export function ImageListUpload({
       >
         {uploading ? (
           <>
-            <Loader2 size={18} className="animate-spin text-ink-400" />
+            <Spinner size={18} label="Uploading" />
             <p className="numeric mt-2 text-xs text-ink-500">
               {progress ? `Uploading ${progress.done + 1} of ${progress.total}…` : 'Uploading…'}
             </p>

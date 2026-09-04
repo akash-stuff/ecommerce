@@ -168,16 +168,19 @@ export default function SignIn() {
         </p>
       )}
 
-      <form onSubmit={submit} className="mt-7 space-y-4">
+      <form onSubmit={submit} className="mt-6 space-y-3">
+        {/* One row, not two. A name pair is two short fields, and stacking them
+            spends a whole 68px row on each — on the register form that is the
+            difference between fitting the viewport and not. */}
         {mode === 'register' && (
-          <>
+          <div className="grid grid-cols-2 gap-3">
             <Field label="First name">
               <input required autoComplete="given-name" {...field('firstName')} className={input} />
             </Field>
             <Field label="Last name (optional)">
               <input autoComplete="family-name" {...field('lastName')} className={input} />
             </Field>
-          </>
+          </div>
         )}
 
         {/* The address is fixed once a code has been sent to it: editing it here
@@ -304,11 +307,22 @@ export default function SignIn() {
         </p>
       )}
 
-      <p className="surface-muted mt-6 text-xs">
-        {awaitingCode
-          ? 'Nothing changes until the code is confirmed, so you can close this and start again.'
-          : 'Shopping without an account works too — your cart is kept either way.'}
-      </p>
+      {/*
+        Not shown while registering.
+
+        "You do not need an account" is worth saying to someone deciding
+        whether to sign in. Said to someone already filling in the create-account
+        form it argues against what they are in the middle of doing, and it costs
+        the 52px that pushes the submit button off a short laptop screen. The way
+        out is still one line above: "Already have an account? Sign in".
+      */}
+      {mode !== 'register' && (
+        <p className="surface-muted mt-5 text-xs">
+          {awaitingCode
+            ? 'Nothing changes until the code is confirmed, so you can close this and start again.'
+            : 'Shopping without an account works too — your cart is kept either way.'}
+        </p>
+      )}
     </AuthShell>
   );
 }
@@ -325,8 +339,9 @@ const HEADINGS: Record<
   },
   register: {
     title: 'Create an account',
-    blurb: (store) =>
-      `This creates an account at ${store}. We will email a code to confirm your address.`,
+    // Short on purpose: two lines here is two lines the fields do not get. The
+    // store's name is already the logo above and the heading says "account".
+    blurb: () => 'We will email a code to confirm your address.',
     submit: 'Send verification code',
   },
   verify: {
@@ -365,10 +380,17 @@ function AuthShell({ children }: { children: React.ReactNode }) {
   const store = useStore();
   const { loginImageUrl, loginMessage } = store.theme;
 
-  const form = <div className="w-full max-w-sm px-4 py-10 sm:px-6">{children}</div>;
+  // `py-6`, not the `py-10` this had: the card is centred in its column, so
+  // its own vertical padding is a second helping of the same breathing room —
+  // free on a tall window, and 64px off the fold on a 13-inch laptop.
+  const card = 'w-full max-w-sm px-4 py-6 sm:px-6';
 
   if (!loginImageUrl) {
-    return <div className="flex min-h-full justify-center">{form}</div>;
+    return (
+      <div className="flex min-h-full justify-center">
+        <div className={card}>{children}</div>
+      </div>
+    );
   }
 
   return (
@@ -391,7 +413,18 @@ function AuthShell({ children }: { children: React.ReactNode }) {
         )}
       </div>
 
-      <div className="flex items-center justify-center">{form}</div>
+      {/*
+        `my-auto`, not `items-center`.
+
+        A flex item centred with `align-items` and taller than its container
+        overflows equally in both directions, and the half above the top edge
+        cannot be scrolled back to — on the register form that would hide the
+        heading and the first field. Auto margins centre the same way while
+        collapsing to zero once the content no longer fits.
+      */}
+      <div className="flex justify-center">
+        <div className={`${card} my-auto`}>{children}</div>
+      </div>
     </div>
   );
 }

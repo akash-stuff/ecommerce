@@ -1,6 +1,7 @@
 import { Link, useLocation, useParams } from 'react-router-dom';
+import { Spinner } from '@/components/Spinner';
 import { useMutation } from '@tanstack/react-query';
-import { Download, Loader2 } from 'lucide-react';
+import { Download } from 'lucide-react';
 import { SuccessTick } from '@/features/checkout/OrderPlaced';
 import { useStore } from '@/features/theme/ThemeProvider';
 import { useCustomerStore } from '@/store/customer.store';
@@ -162,10 +163,13 @@ export default function OrderConfirmation() {
         </address>
       </section>
 
-      <div className="mt-10 flex flex-wrap items-center gap-3">
+      {/* `items-stretch`, for the reason in ProductDetail: "Continue shopping"
+          is filled and "Download invoice" is outlined, so their heights differ
+          by the border alone. */}
+      <div className="mt-10 flex flex-wrap items-stretch gap-3">
         <Link
           to="/"
-          className="rounded-card bg-brand px-6 py-3 text-sm font-medium text-white"
+          className="inline-flex items-center rounded-card bg-brand px-6 py-3 text-sm font-medium text-white"
         >
           Continue shopping
         </Link>
@@ -178,7 +182,7 @@ export default function OrderConfirmation() {
             className="inline-flex items-center gap-2 rounded-card border border-ink-900 px-6 py-3 text-sm font-medium text-ink-900 transition-colors hover:bg-ink-50 disabled:opacity-40"
           >
             {invoice.isPending ? (
-              <Loader2 size={14} className="animate-spin" />
+              <Spinner size={14} tone="current" />
             ) : (
               <Download size={14} />
             )}

@@ -67,13 +67,13 @@ async function main(): Promise<void> {
       name: 'Fashion', slug: 'fashion', category: 'apparel',
       description: 'Editorial hero, large imagery and a serif display face. For lookbook-led catalogues.',
       theme: { primaryColor: '#141414', secondaryColor: '#8A8A8A', accentColor: '#141414', headingFont: 'Playfair Display', bodyFont: 'Inter', background: 'paper', logoSize: 'lg' },
-      sections: ['hero', 'featured', 'newArrivals', 'categories', 'newsletter'],
+      sections: ['hero', 'promise', 'featured', 'newArrivals', 'categories', 'newsletter'],
     },
     {
       name: 'Electronics', slug: 'electronics', category: 'electronics',
       description: 'Specification-first layout with a dense product grid. Categories lead, so shoppers can filter fast.',
       theme: { primaryColor: '#0B4F9E', secondaryColor: '#0EA5E9', accentColor: '#0B4F9E', headingFont: 'Inter', bodyFont: 'Inter', background: 'dots', logoSize: 'md' },
-      sections: ['hero', 'categories', 'featured', 'newArrivals'],
+      sections: ['hero', 'promise', 'categories', 'featured', 'newArrivals'],
     },
     {
       name: 'Grocery', slug: 'grocery', category: 'grocery',
@@ -85,31 +85,31 @@ async function main(): Promise<void> {
       name: 'Furniture', slug: 'furniture', category: 'home',
       description: 'Room-scale photography with generous spacing. Slow, considered browsing.',
       theme: { primaryColor: '#166534', secondaryColor: '#F5A524', accentColor: '#166534', headingFont: 'Fraunces', bodyFont: 'Inter', background: 'paper', logoSize: 'lg' },
-      sections: ['hero', 'categories', 'featured', 'newsletter'],
+      sections: ['hero', 'promise', 'categories', 'featured', 'newsletter'],
     },
     {
       name: 'Cosmetics', slug: 'cosmetics', category: 'beauty',
       description: 'Soft palette, new arrivals first. For ranges that turn over quickly.',
       theme: { primaryColor: '#B4327A', secondaryColor: '#F4C2D7', accentColor: '#B4327A', headingFont: 'Cormorant', bodyFont: 'Inter', background: 'aurora', logoSize: 'md' },
-      sections: ['hero', 'newArrivals', 'featured', 'categories', 'newsletter'],
+      sections: ['hero', 'promise', 'newArrivals', 'featured', 'categories', 'newsletter'],
     },
     {
       name: 'Jewellery', slug: 'jewellery', category: 'luxury',
       description: 'Quiet, dark-neutral layout with one hero piece. Few products, shown large.',
       theme: { primaryColor: '#8B7355', secondaryColor: '#D4AF37', accentColor: '#A8894F', headingFont: 'Cormorant', bodyFont: 'Inter', background: 'midnight', logoSize: 'lg' },
-      sections: ['hero', 'featured', 'newsletter'],
+      sections: ['hero', 'promise', 'featured', 'newsletter'],
     },
     {
       name: 'Bakery', slug: 'bakery', category: 'food',
       description: 'Warm and short. One hero, a selection for today, and a mailing list.',
       theme: { primaryColor: '#8C4A1E', secondaryColor: '#E8B84B', accentColor: '#8C4A1E', headingFont: 'Fraunces', bodyFont: 'Inter', background: 'paper', logoSize: 'md' },
-      sections: ['hero', 'featured', 'newsletter'],
+      sections: ['hero', 'promise', 'featured', 'newsletter'],
     },
     {
       name: 'Sports', slug: 'sports', category: 'sports',
       description: 'High-contrast, motion-led hero with categories by discipline.',
       theme: { primaryColor: '#0F172A', secondaryColor: '#F97316', accentColor: '#F97316', headingFont: 'Space Grotesk', bodyFont: 'DM Sans', background: 'lines', logoSize: 'md' },
-      sections: ['hero', 'categories', 'newArrivals', 'featured'],
+      sections: ['hero', 'promise', 'categories', 'newArrivals', 'featured'],
     },
     {
       name: 'Books', slug: 'books', category: 'media',
@@ -127,13 +127,13 @@ async function main(): Promise<void> {
       name: 'Handmade', slug: 'handmade', category: 'craft',
       description: 'Maker-led, with new arrivals leading and a story-length hero.',
       theme: { primaryColor: '#7C5C3E', secondaryColor: '#C4A484', accentColor: '#9C6644', headingFont: 'Fraunces', bodyFont: 'Work Sans', background: 'paper', logoSize: 'md' },
-      sections: ['hero', 'newArrivals', 'categories', 'featured', 'newsletter'],
+      sections: ['hero', 'promise', 'newArrivals', 'categories', 'featured', 'newsletter'],
     },
     {
       name: 'Toys', slug: 'toys', category: 'kids',
       description: 'Bright and playful, with categories grouped by age.',
       theme: { primaryColor: '#DB2777', secondaryColor: '#FBBF24', accentColor: '#2563EB', headingFont: 'Poppins', bodyFont: 'Poppins', background: 'aurora', logoSize: 'lg' },
-      sections: ['hero', 'categories', 'featured', 'newArrivals'],
+      sections: ['hero', 'promise', 'categories', 'featured', 'newArrivals'],
     },
     {
       name: 'Minimal', slug: 'minimal', category: 'general',
@@ -145,7 +145,7 @@ async function main(): Promise<void> {
       name: 'General Store', slug: 'general-store', category: 'general',
       description: 'Every section switched on. The default for a store that has not decided yet.',
       theme: { primaryColor: '#111827', secondaryColor: '#6B7280', accentColor: '#111827', headingFont: 'Inter', bodyFont: 'Inter', background: 'wash', logoSize: 'md' },
-      sections: ['hero', 'featured', 'categories', 'newArrivals', 'newsletter'],
+      sections: ['hero', 'promise', 'featured', 'categories', 'newArrivals', 'newsletter'],
     },
   ];
 

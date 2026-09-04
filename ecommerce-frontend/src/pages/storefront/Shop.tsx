@@ -4,9 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { productService } from '@/services/store.service';
 import { categoryService } from '@/services/admin.service';
 import { apiClient, unwrap } from '@/services/api-client';
-import { useStore } from '@/features/theme/ThemeProvider';
-import { formatMoney } from '@/utils/format';
-import type { CategoryNode, Product } from '@/types/api';
+import { ProductCard } from '@/features/storefront/sections';
+import type { CategoryNode } from '@/types/api';
 
 const SORTS = [
   { value: 'createdAt:desc', label: 'Newest' },
@@ -23,7 +22,6 @@ const SORTS = [
  * page, and what a crawler needs to see distinct listings.
  */
 export default function Shop({ categorySlug }: { categorySlug?: string }) {
-  const store = useStore();
   const [params, setParams] = useSearchParams();
 
   const page = Number(params.get('page') ?? 1);
@@ -95,7 +93,7 @@ export default function Shop({ categorySlug }: { categorySlug?: string }) {
   const meta = products.data?.meta;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+    <div className="mx-auto page-container px-4 py-12 sm:px-6">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h1 className="font-display text-2xl tracking-tight text-ink-950">{title}</h1>
@@ -239,7 +237,7 @@ export default function Shop({ categorySlug }: { categorySlug?: string }) {
 
         <div>
           {products.isLoading && (
-            <div className="grid grid-cols-2 gap-6 lg:grid-cols-3">
+            <div className="grid grid-cols-2 gap-4 sm:gap-5 lg:grid-cols-3">
               {Array.from({ length: 6 }).map((_, i) => (
                 <div key={i} className="animate-pulse">
                   <div className="aspect-square rounded-card bg-ink-100" />
@@ -275,7 +273,7 @@ export default function Shop({ categorySlug }: { categorySlug?: string }) {
           {items.length > 0 && (
             <div className="grid grid-cols-2 gap-6 lg:grid-cols-3">
               {items.map((product) => (
-                <Card key={product.id} product={product} currency={store.currency} />
+                <ProductCard key={product.id} product={product} />
               ))}
             </div>
           )}
@@ -309,36 +307,6 @@ export default function Shop({ categorySlug }: { categorySlug?: string }) {
   );
 }
 
-function Card({ product, currency }: { product: Product; currency: string }) {
-  return (
-    <Link to={`/product/${product.slug}`} className="group">
-      <div className="aspect-square overflow-hidden rounded-card bg-ink-50">
-        {product.images[0] ? (
-          <img
-            src={product.images[0].url}
-            alt={product.images[0].altText ?? product.name}
-            loading="lazy"
-            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-          />
-        ) : (
-          <div className="flex h-full items-center justify-center text-xs text-ink-300">
-            No image
-          </div>
-        )}
-      </div>
-      <h3 className="mt-3 text-sm text-ink-900 group-hover:text-brand">{product.name}</h3>
-      <p className="mt-1 flex items-baseline gap-2 text-sm">
-        <span className="font-medium text-ink-950">{formatMoney(product.price, currency)}</span>
-        {product.compareAtPrice && (
-          <span className="text-xs text-ink-300 line-through">
-            {formatMoney(product.compareAtPrice, currency)}
-          </span>
-        )}
-      </p>
-      {product.stock === 0 && <p className="mt-1 text-xs text-red-600">Out of stock</p>}
-    </Link>
-  );
-}
 
 interface Facets {
   categories: { id: string; name: string; slug: string; count: number }[];

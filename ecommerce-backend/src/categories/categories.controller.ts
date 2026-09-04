@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CategoriesService } from './categories.service';
+import { CategoryShowcaseService } from './category-showcase.service';
 import { Public, RequirePermissions } from '../common/decorators';
 import { PERMISSIONS } from '../common/rbac/permissions';
 import {
@@ -24,13 +25,26 @@ import {
 @ApiBearerAuth()
 @Controller('categories')
 export class CategoriesController {
-  constructor(private readonly categories: CategoriesService) {}
+  constructor(
+    private readonly categories: CategoriesService,
+    private readonly showcase: CategoryShowcaseService,
+  ) {}
 
   @Public()
   @Get()
   @ApiOperation({ summary: 'List categories for the current store' })
   findAll(@Query() query: CategoryQueryDto) {
     return this.categories.findAll(query);
+  }
+
+  /**
+   * Before `slug/:slug` and `:id`, so "showcase" is never read as either.
+   */
+  @Public()
+  @Get('showcase')
+  @ApiOperation({ summary: 'Top-level categories with counts and real discount ranges' })
+  showcaseTiles() {
+    return this.showcase.tiles();
   }
 
   @Public()

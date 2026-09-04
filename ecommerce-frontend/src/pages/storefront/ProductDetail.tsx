@@ -28,7 +28,7 @@ export default function ProductDetail() {
 
   if (isLoading) {
     return (
-      <div className="mx-auto max-w-6xl px-4 py-16 sm:px-6">
+      <div className="mx-auto page-container px-4 py-16 sm:px-6">
         <div className="grid gap-10 md:grid-cols-2">
           <div className="aspect-square animate-pulse rounded-card bg-ink-100" />
           <div className="space-y-4">
@@ -57,7 +57,7 @@ export default function ProductDetail() {
   const inStock = product.stock > 0;
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+    <div className="mx-auto page-container px-4 py-12 sm:px-6">
       <div className="grid gap-10 md:grid-cols-2">
         <div className="aspect-square overflow-hidden rounded-card bg-ink-50">
           {product.images[0] ? (
@@ -95,7 +95,16 @@ export default function ProductDetail() {
             {inStock ? `${product.stock} in stock` : 'Out of stock'}
           </p>
 
-          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+          {/*
+            `items-stretch`, not `items-center`.
+
+            "Add to cart" is a solid fill and "Save" is outlined, so the
+            outlined one is two pixels taller for its border alone. Centring
+            them lines up their middles and leaves the tops and bottoms
+            disagreeing by a pixel each; stretching makes every button in the
+            row the same height whatever its treatment.
+          */}
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-stretch">
             <button
               disabled={!inStock || addToCart.isPending}
               onClick={() =>

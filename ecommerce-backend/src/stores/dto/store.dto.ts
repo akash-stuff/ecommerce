@@ -25,6 +25,20 @@ export class StoreThemeDto {
   @ApiProperty({ nullable: true }) customCss!: string | null;
 }
 
+/**
+ * One tile of the homepage delivery-and-payment strip, ready to render.
+ *
+ * Either written by the shopkeeper in Appearance, or worded server-side from
+ * the store's own shipping settings when they have written none — see
+ * `toPromiseRows`. An empty array means the shop has nothing true to say and
+ * the storefront draws no strip at all.
+ */
+export class StorePromiseDto {
+  @ApiProperty({ description: 'One of PROMISE_ICONS' }) icon!: string;
+  @ApiProperty() title!: string;
+  @ApiProperty() detail!: string;
+}
+
 export class StoreTemplateDto {
   @ApiProperty() slug!: string;
   @ApiProperty() name!: string;
@@ -36,8 +50,11 @@ export class StoreConfigDto {
   @ApiProperty() slug!: string;
   @ApiProperty({ nullable: true }) description!: string | null;
   @ApiProperty() currency!: string;
-  @ApiProperty() email!: string;
+  /** Null when the stored address is a staff login and is being withheld. */
+  @ApiProperty({ nullable: true }) email!: string | null;
   @ApiProperty({ nullable: true }) phone!: string | null;
+  /** Null when the shop has not opted in; the storefront shows no button then. */
+  @ApiProperty({ nullable: true }) whatsappNumber!: string | null;
   @ApiProperty({ nullable: true }) metaTitle!: string | null;
   @ApiProperty({ nullable: true }) metaDescription!: string | null;
 
@@ -52,4 +69,5 @@ export class StoreConfigDto {
   @ApiProperty({ type: StoreTemplateDto, nullable: true })
   template!: StoreTemplateDto | null;
   @ApiProperty({ type: StoreThemeDto }) theme!: StoreThemeDto;
+  @ApiProperty({ type: [StorePromiseDto] }) promises!: StorePromiseDto[];
 }

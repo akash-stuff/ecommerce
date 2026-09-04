@@ -11,6 +11,7 @@ import { bannerService } from '@/services/store.service';
 import { BannerLink } from '@/components/BannerLink';
 import { SocialIcon, socialLabel } from '@/components/SocialIcon';
 import { Toaster } from '@/components/Toasts';
+import { WhatsAppButton } from '@/components/WhatsAppButton';
 import { apiClient, unwrap } from '@/services/api-client';
 
 /**
@@ -155,7 +156,11 @@ export function StorefrontLayout() {
       )}
 
       <header className="surface-header sticky top-0 z-40 border-b backdrop-blur-xl">
-        <div className="mx-auto flex h-[4.5rem] max-w-7xl items-center gap-4 px-4 sm:h-20 sm:px-8">
+        {/* `min-h`, not `h`. A fixed row silently caps the logo: the store picks
+            "Large", the image is clipped to whatever the bar allows, and the
+            setting looks broken. The minimum keeps the bar its usual size for a
+            small or absent logo, and lets a large one push it taller. */}
+        <div className="mx-auto flex min-h-[4.5rem] page-container items-center gap-4 px-4 py-2 sm:min-h-[5rem] sm:px-8">
           <button
             type="button"
             onClick={() => setMenuOpen(true)}
@@ -226,7 +231,7 @@ export function StorefrontLayout() {
 
         {searchOpen && (
           <div className="surface-line border-t">
-            <form onSubmit={submitSearch} className="mx-auto max-w-7xl px-4 py-4 sm:px-8">
+            <form onSubmit={submitSearch} className="mx-auto page-container px-4 py-4 sm:px-8">
               <input
                 autoFocus
                 type="search"
@@ -290,7 +295,7 @@ export function StorefrontLayout() {
       </main>
 
       <footer className="surface-footer mt-24 border-t">
-        <div className="mx-auto max-w-7xl px-4 py-16 sm:px-8 sm:py-20">
+        <div className="mx-auto page-container px-4 py-16 sm:px-8 sm:py-20">
           <div className="grid gap-10 sm:grid-cols-2 lg:grid-cols-4">
             <div className="lg:col-span-2">
               {store.theme.logoUrl ? (
@@ -359,10 +364,25 @@ export function StorefrontLayout() {
             <p className="surface-muted text-xs">
               © {new Date().getFullYear()} {store.name}. All rights reserved.
             </p>
-            <p className="surface-muted text-xs">{store.email}</p>
+            {/* Absent when the server withheld it — the stored address was a
+                staff login and publishing it would give away half a credential.
+                Nothing is shown rather than a placeholder, because an invented
+                contact address is worse than none. */}
+            {store.email && (
+              <a
+                href={`mailto:${store.email}`}
+                className="surface-muted text-xs underline-offset-2 hover:underline"
+              >
+                {store.email}
+              </a>
+            )}
           </div>
         </div>
       </footer>
+
+      {/* Outside <main> so it floats over every page, and after the footer so
+          it comes last in the tab order rather than interrupting the nav. */}
+      <WhatsAppButton />
     </div>
   );
 }

@@ -34,8 +34,34 @@ interface Draft {
    */
   socialLinks: Record<string, string>;
   homepageLayout: string[];
+  /**
+   * The homepage delivery-and-payment strip. Always held as MAX_PROMISES rows
+   * so the form has something to render in every slot; blank rows are dropped
+   * by the server on save, which is how a row is deleted.
+   */
+  promises: PromiseRow[];
   customCss: string;
 }
+
+interface PromiseRow {
+  icon: string;
+  title: string;
+  detail: string;
+}
+
+const MAX_PROMISES = 4;
+
+/** Mirrors PROMISE_ICONS on the server; an icon outside this list is refused. */
+const PROMISE_ICON_LABELS: { value: string; label: string }[] = [
+  { value: 'truck', label: 'Delivery van' },
+  { value: 'clock', label: 'Clock' },
+  { value: 'rupee', label: 'Rupee' },
+  { value: 'shield', label: 'Shield' },
+  { value: 'chat', label: 'Chat' },
+  { value: 'refresh', label: 'Returns' },
+];
+
+const BLANK_PROMISE: PromiseRow = { icon: 'truck', title: '', detail: '' };
 
 export default function Appearance() {
   const queryClient = useQueryClient();
@@ -78,6 +104,21 @@ export default function Appearance() {
       loginMessage: t.loginMessage ?? '',
       socialLinks: t.socialLinks ?? {},
       homepageLayout: t.homepageLayout ?? [],
+      /* Padded to four so every slot has an input; the server sends only the
+         rows that have text in them. Normalised on the way in because this is
+         a JSON column — a row written by an older build could be missing a
+         field, and an undefined `value` turns a controlled Select into an
+         uncontrolled one. */
+      promises: Array.from({ length: MAX_PROMISES }, (_, i) => {
+        const row = (t.promises ?? [])[i];
+        return {
+          icon: PROMISE_ICON_LABELS.some((o) => o.value === row?.icon)
+            ? row.icon
+            : BLANK_PROMISE.icon,
+          title: row?.title ?? '',
+          detail: row?.detail ?? '',
+        };
+      }),
       customCss: t.customCss ?? '',
     });
   }, [theme.data]);
@@ -117,6 +158,13 @@ export default function Appearance() {
            */
           socialLinks: d.socialLinks,
           homepageLayout: d.homepageLayout,
+          /* Only the rows that are actually filled in. An empty array is
+             meaningful and is sent: it clears the authored strip and hands the
+             section back to the one derived from shipping settings, which is
+             how a shopkeeper undoes this. */
+          promises: d.promises
+            .map((r) => ({ ...r, title: r.title.trim(), detail: r.detail.trim() }))
+            .filter((r) => r.title !== '' && r.detail !== ''),
           customCss: d.customCss,
         }),
       ),
@@ -151,6 +199,32 @@ export default function Appearance() {
   const set = <K extends keyof Draft>(key: K, value: Draft[K]) =>
     setDraft({ ...draft, [key]: value });
 
+  const setPromise = (index: number, patch: Partial<PromiseRow>) =>
+    setDraft((d) =>
+      d
+        ? { ...d, promises: d.promises.map((r, i) => (i === index ? { ...r, ...patch } : r)) }
+        : d,
+    );
+
+  /*
+    A slot is "used" the moment either field has text in it.
+
+    The distinction matters because the two fields are required together: the
+    server's DTO refuses a row with a blank title or detail, so an untouched
+    slot must not be sent at all, and a half-filled one must be pointed at
+    rather than quietly dropped. Sending all four unconditionally is what the
+    first version did, and every save failed with a validation error about a
+    row the shopkeeper had never typed in.
+  */
+  const usedPromises = (draft?.promises ?? []).filter(
+    (r) => r.title.trim() !== '' || r.detail.trim() !== '',
+  );
+  const completePromises = usedPromises.filter(
+    (r) => r.title.trim() !== '' && r.detail.trim() !== '',
+  );
+  const halfFilled = usedPromises.length - completePromises.length;
+  const authored = completePromises.length;
+
   const toggleSection = (section: string) =>
     set(
       'homepageLayout',
@@ -172,7 +246,7 @@ export default function Appearance() {
       title="Appearance"
       subtitle={`How ${theme.data?.name ?? 'your store'} looks to shoppers`}
       action={
-        <PrimaryButton disabled={save.isPending} onClick={() => save.mutate(draft)}>
+        <PrimaryButton disabled={save.isPending || halfFilled > 0} onClick={() => save.mutate(draft)}>
           {save.isPending ? 'Saving…' : 'Save changes'}
         </PrimaryButton>
       }
@@ -461,6 +535,71 @@ export default function Appearance() {
           </Card>
 
           <Card
+            title="Delivery & payment strip"
+            description="The row of promises under your hero. Leave all four blank to use your shipping settings instead"
+          >
+            {/*
+              Four fixed slots rather than an add/remove list.
+
+              The strip is a grid of at most four and it looks wrong with one,
+              so the real interaction is "fill in as many as you mean" — which
+              fixed slots express directly. Clearing a row's text removes it;
+              the server drops rows with no text, so there is no delete button
+              to explain and no way to end up with an empty tile on the page.
+            */}
+            <div className="space-y-4">
+              {draft.promises.map((row, i) => (
+                <div
+                  key={i}
+                  className="grid gap-3 rounded-card border border-ink-100 p-3 sm:grid-cols-[8rem_1fr_1.4fr]"
+                >
+                  <Select
+                    aria-label={`Row ${i + 1} icon`}
+                    value={row.icon}
+                    onChange={(e) => setPromise(i, { icon: e.target.value })}
+                  >
+                    {PROMISE_ICON_LABELS.map((o) => (
+                      <option key={o.value} value={o.value}>
+                        {o.label}
+                      </option>
+                    ))}
+                  </Select>
+                  <Input
+                    aria-label={`Row ${i + 1} title`}
+                    value={row.title}
+                    maxLength={40}
+                    placeholder={i === 0 ? 'Free delivery' : 'Title'}
+                    onChange={(e) => setPromise(i, { title: e.target.value })}
+                  />
+                  <Input
+                    aria-label={`Row ${i + 1} detail`}
+                    value={row.detail}
+                    maxLength={80}
+                    placeholder={i === 0 ? 'On orders over ₹999' : 'One short line'}
+                    onChange={(e) => setPromise(i, { detail: e.target.value })}
+                  />
+                </div>
+              ))}
+            </div>
+
+            {halfFilled > 0 ? (
+              <p className="mt-3 text-xs text-amber-700">
+                {halfFilled === 1
+                  ? 'One row has only half of it filled in. A row needs both a title and a line under it, or leave both blank.'
+                  : `${halfFilled} rows have only half of them filled in. A row needs both a title and a line under it, or leave both blank.`}
+              </p>
+            ) : (
+              <p className="mt-3 text-xs text-ink-500">
+                {authored === 0
+                  ? 'Using your shipping settings: free-delivery threshold, delivery days and cash on delivery.'
+                  : authored === 1
+                    ? 'One row will not show — the strip needs at least two.'
+                    : `${authored} rows will show.`}
+              </p>
+            )}
+          </Card>
+
+          <Card
             title="Homepage sections"
             description="Ticked sections appear in this order, top to bottom"
           >
@@ -535,7 +674,7 @@ export default function Appearance() {
           <FormError error={save.error} />
 
           <div className="flex items-center gap-3">
-            <PrimaryButton disabled={save.isPending} onClick={() => save.mutate(draft)}>
+            <PrimaryButton disabled={save.isPending || halfFilled > 0} onClick={() => save.mutate(draft)}>
               {save.isPending ? 'Saving…' : 'Save changes'}
             </PrimaryButton>
 

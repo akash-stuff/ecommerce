@@ -81,6 +81,8 @@ export interface EditableTheme {
    */
   email: string;
   phone: string | null;
+  /** Null until the shop opts in; the chat button is hidden while it is. */
+  whatsappNumber: string | null;
   addressLine1: string | null;
   addressLine2: string | null;
   city: string | null;
@@ -103,6 +105,12 @@ export interface EditableTheme {
     loginMessage: string | null;
     socialLinks: Record<string, string>;
     homepageLayout: string[];
+    /**
+     * The homepage delivery-and-payment strip as the shopkeeper wrote it.
+     * Empty means they have written none, and the storefront derives the strip
+     * from the store's shipping settings instead.
+     */
+    promises: StorePromise[];
     customCss: string | null;
   } | null;
 }
@@ -113,8 +121,15 @@ export interface StoreConfig {
   slug: string;
   description: string | null;
   currency: string;
-  email: string;
+  /** Null when the server withholds it: the stored address is a staff login. */
+  email: string | null;
   phone: string | null;
+  /**
+   * Null until the shop opts in, and the storefront's chat button is hidden
+   * while it is. Deliberately not defaulted from `phone`: that is frequently a
+   * landline, and a chat button nobody can answer is worse than none.
+   */
+  whatsappNumber: string | null;
   metaTitle: string | null;
   metaDescription: string | null;
   /**
@@ -124,6 +139,27 @@ export interface StoreConfig {
   productDescription: string | null;
   template: { id: string; slug: string; name: string } | null;
   theme: StoreTheme;
+  /**
+   * What the shop promises a shopper before they have a basket. Optional so a
+   * storefront
+   * built against an older API still typechecks. An empty array means the shop
+   * has nothing true to say and the section draws nothing.
+   */
+  promises?: StorePromise[];
+}
+
+/**
+ * One tile of the homepage delivery-and-payment strip, ready to render.
+ *
+ * Worded server-side either way: the shop writes these in Appearance, and a
+ * shop that has written none gets a set derived from its shipping methods. The
+ * storefront's only job is to pick an icon for `icon` and print the two lines.
+ */
+export interface StorePromise {
+  /** One of a fixed set; see PROMISE_ICONS on the server. */
+  icon: string;
+  title: string;
+  detail: string;
 }
 
 /** Every money field arrives as a decimal string so precision survives the wire. */
@@ -257,6 +293,23 @@ export interface Category {
 
 export interface CategoryNode extends Category {
   children: CategoryNode[];
+}
+
+/**
+ * One tile in the storefront's category row.
+ *
+ * `discount` is the real spread across that category's live products, computed
+ * server-side from `compareAtPrice` against `price`. Null when nothing in the
+ * category is reduced, which is why the tile falls back to a product count
+ * rather than printing a discount nobody is offering.
+ */
+export interface CategoryTile {
+  id: string;
+  name: string;
+  slug: string;
+  imageUrl: string | null;
+  productCount: number;
+  discount: { min: number; max: number } | null;
 }
 
 export interface Coupon {

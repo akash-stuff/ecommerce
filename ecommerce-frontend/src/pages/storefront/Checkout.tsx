@@ -266,7 +266,7 @@ export default function Checkout() {
   });
 
   return (
-    <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6">
+    <div className="mx-auto page-container px-4 py-12 sm:px-6">
       <h1 className="font-display text-2xl tracking-tight text-ink-950">Checkout</h1>
 
       <form onSubmit={submit} className="mt-8 grid gap-10 lg:grid-cols-[1fr_22rem]">

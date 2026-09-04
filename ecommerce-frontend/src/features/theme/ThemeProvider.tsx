@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, type ReactNode } from 'react';
+import { Spinner } from '@/components/Spinner';
 import { useQuery } from '@tanstack/react-query';
 import { storeService } from '@/services/store.service';
 import type { StoreConfig } from '@/types/api';
@@ -90,8 +91,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-ink-300 border-t-ink-900" />
-        <span className="sr-only">Loading store</span>
+        <Spinner size={28} label="Loading store" />
       </div>
     );
   }

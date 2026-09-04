@@ -75,6 +75,19 @@ export default {
          * a name with a colour will do the same.
          */
         glow: '0 1px 2px rgb(22 101 52 / 0.08), 0 10px 24px -8px rgb(22 101 52 / 0.22)',
+        /**
+         * The storefront's version, cast in whatever colour the *store* chose.
+         *
+         * `glow` above is the platform's fixed green, which is right for the
+         * consoles and wrong on a tenant page — a blue shop would get a green
+         * halo. This one reads `--brand-primary`, so it is always the shop's
+         * own colour. Channels, not hex, because that is what the variable
+         * holds.
+         */
+        'glow-store':
+          '0 1px 2px rgb(var(--brand-primary) / 0.10), 0 12px 28px -10px rgb(var(--brand-primary) / 0.28)',
+        'glow-store-sm': '0 1px 3px rgb(var(--brand-primary) / 0.22)',
+
         /** The resting state of a primary button: sits back down. */
         'glow-sm': '0 1px 2px rgb(22 101 52 / 0.16)',
         /** An amber cast, for the secondary's own highlights. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isAdminHost, resolveApiUrl } from './env';
+import { isAdminHost, resolveApiUrl, tenantUrl } from './env';
 
 /**
  * The `{host}` placeholder is what lets one bundle serve every tenant: the
@@ -49,5 +49,36 @@ describe('isAdminHost', () => {
 
   it('does not mistake a tenant whose name starts with "admin" for the console', () => {
     expect(isAdminHost('administrators-choice.platform.localhost')).toBe(false);
+  });
+});
+
+/**
+ * The admin console is served from a host with no storefront on it, so any
+ * link from admin to a shopper-facing page has to be absolute and carry the
+ * tenant's own hostname. This is the function that builds it — the Pages list
+ * previously used a relative `/${slug}`, which resolved against the console's
+ * host and opened a platform page instead of the store's.
+ */
+describe('tenantUrl', () => {
+  const stub = (protocol: string, port: string) => {
+    Object.defineProperty(window, 'location', {
+      value: { protocol, port, hostname: `admin.platform.localhost` },
+      writable: true,
+    });
+  };
+
+  it('puts the tenant on its own subdomain of the platform domain', () => {
+    stub('http:', '');
+    expect(tenantUrl('northwind')).toBe('http://northwind.platform.localhost');
+  });
+
+  it('keeps the dev port, so a link from the console opens on the same server', () => {
+    stub('http:', '5173');
+    expect(tenantUrl('northwind')).toBe('http://northwind.platform.localhost:5173');
+  });
+
+  it('follows the current scheme rather than hard-coding one', () => {
+    stub('https:', '');
+    expect(tenantUrl('voltway')).toBe('https://voltway.platform.localhost');
   });
 });

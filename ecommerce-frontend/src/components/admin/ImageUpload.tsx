@@ -1,5 +1,6 @@
 import { useRef, useState } from 'react';
-import { ImagePlus, Link2, Loader2, Upload, X } from 'lucide-react';
+import { Spinner } from '@/components/Spinner';
+import { ImagePlus, Link2, Upload, X } from 'lucide-react';
 import { mediaService, type UploadPurpose } from '@/services/admin.service';
 import type { ApiError } from '@/types/api';
 import { CropDialog, type CropSpec } from './CropDialog';
@@ -218,7 +219,7 @@ export function ImageUpload({
         >
           {uploading ? (
             <>
-              <Loader2 size={18} className="animate-spin text-ink-400" />
+              <Spinner size={18} label="Uploading" />
               <p className="mt-2 text-xs text-ink-500">Uploading…</p>
             </>
           ) : (

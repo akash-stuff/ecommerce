@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Check, Copy, RefreshCw, Trash2 } from 'lucide-react';
+import { AlertTriangle, Check, Copy, RefreshCw, Trash2 } from 'lucide-react';
 import { apiClient, unwrap } from '@/services/api-client';
 import { invoiceService, type InvoiceSettings } from '@/services/admin.service';
 import {
@@ -12,6 +12,7 @@ import { StatusBadge } from '@/components/admin/DataTable';
 import { Field, FormError, FormGrid, Input, Select, Textarea } from '@/components/admin/Modal';
 import type { EditableTheme } from '@/types/api';
 import { toast, toastFromError } from '@/components/Toasts';
+import { useAuthStore } from '@/store/auth.store';
 
 interface DomainRow {
   id: string;
@@ -33,6 +34,7 @@ interface Instructions {
 
 export default function Settings() {
   const queryClient = useQueryClient();
+  const user = useAuthStore((s) => s.user);
 
   const store = useQuery({
     queryKey: ['admin-theme'],
@@ -48,6 +50,7 @@ export default function Settings() {
     isPublished: false,
     email: '',
     phone: '',
+    whatsappNumber: '',
     addressLine1: '',
     addressLine2: '',
     city: '',
@@ -67,6 +70,7 @@ export default function Settings() {
       isPublished: s.isPublished,
       email: s.email,
       phone: s.phone ?? '',
+      whatsappNumber: s.whatsappNumber ?? '',
       addressLine1: s.addressLine1 ?? '',
       addressLine2: s.addressLine2 ?? '',
       city: s.city ?? '',
@@ -103,6 +107,7 @@ export default function Settings() {
            */
           email: draft.email,
           phone: draft.phone,
+          whatsappNumber: draft.whatsappNumber,
           addressLine1: draft.addressLine1,
           addressLine2: draft.addressLine2,
           city: draft.city,
@@ -152,7 +157,7 @@ export default function Settings() {
           <FormGrid>
             <Field
               label="Contact email"
-              hint="Where shoppers reply. Cannot be empty — it is printed on every order email."
+              hint="Shoppers see this in your footer and on every order email. Use a public address, not the one you sign in with."
             >
               <Input
                 type="email"
@@ -160,6 +165,25 @@ export default function Settings() {
                 value={draft.email}
                 onChange={(e) => setDraft({ ...draft, email: e.target.value })}
               />
+
+              {/*
+                The storefront withholds this address when it is a sign-in one,
+                so the footer simply has no email on it — which looks like a bug
+                unless the shopkeeper is told. Compared against the signed-in
+                account only: the full staff list is not on this page, and the
+                server refuses the save either way.
+              */}
+              {draft.email.trim().toLowerCase() === (user?.email ?? '').toLowerCase() && (
+                <p className="mt-2 flex items-start gap-2 rounded-card border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-relaxed text-amber-900">
+                  <AlertTriangle size={13} className="mt-px shrink-0" />
+                  <span>
+                    This is the address you sign in with, so your storefront is
+                    hiding it rather than publishing half of your login. Set a
+                    public address such as <strong>info@</strong> to show a way
+                    to reach you.
+                  </span>
+                </p>
+              )}
             </Field>
 
             <Field label="Mobile number" hint="Optional. Empty removes it everywhere.">
@@ -171,6 +195,21 @@ export default function Settings() {
                 placeholder="+91 98400 11111"
                 value={draft.phone}
                 onChange={(e) => setDraft({ ...draft, phone: e.target.value })}
+              />
+            </Field>
+
+            <Field
+              label="WhatsApp number"
+              hint="Optional. Adds a chat button to your storefront. Empty removes it."
+            >
+              <Input
+                type="tel"
+                inputMode="tel"
+                autoComplete="tel"
+                maxLength={20}
+                placeholder="+91 98400 11111"
+                value={draft.whatsappNumber}
+                onChange={(e) => setDraft({ ...draft, whatsappNumber: e.target.value })}
               />
             </Field>
 

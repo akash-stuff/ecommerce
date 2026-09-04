@@ -299,6 +299,14 @@ model Store {
   description  String?
   email        String
   phone        String?
+  /// The number the WhatsApp button on the storefront opens a chat with.
+  ///
+  /// Separate from `phone` on purpose: `phone` is the shop's contact number and
+  /// is frequently a landline or a switchboard, neither of which is on
+  /// WhatsApp. A button that opens a chat with a number nobody reads is worse
+  /// than no button, so this is opt-in and the storefront shows nothing until
+  /// it is set. Stored as typed and normalised to digits at the point of use.
+  whatsappNumber String?
   addressLine1 String?
   addressLine2 String?
   city         String?
@@ -388,6 +396,11 @@ model Theme {
   headerConfig       Json     @default("{}")
   footerConfig       Json     @default("{}")
   homepageLayout     Json     @default("[]")
+  /// The delivery-and-payment strip on the homepage, as
+  /// `[{ icon, title, detail }]`, at most four. Empty means the shopkeeper has
+  /// not written one, and the storefront falls back to the strip derived from
+  /// their shipping methods — see resolveStorePromises.
+  promises           Json     @default("[]")
   socialLinks        Json     @default("{}")
   customCss          String?
   updatedAt          DateTime @updatedAt

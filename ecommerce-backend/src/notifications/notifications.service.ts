@@ -5,6 +5,7 @@ import { RequestContextStore } from '../common/context/request-context';
 import { paginate, PaginatedResult, PaginationQueryDto } from '../common/dto/pagination.dto';
 import { MailerService, type SendResult } from './mailer.service';
 import { SmsService } from './sms.service';
+import { isStaffLoginEmail } from '../stores/staff-login-email';
 import { orderPlacedSms, orderStatusSms } from './sms-templates';
 import {
   customerWelcome,
@@ -104,7 +105,23 @@ export class NotificationsService {
 
       return {
         storeName: store.name,
-        storeEmail: store.email,
+        /**
+         * Withheld when the address on file is one the shop's own staff sign in
+         * with. The two are separate fields, and drift into being the same when
+         * whoever filled the provisioning form typed one address twice — which
+         * is why it is checked here rather than assumed at the point it was
+         * stored.
+         *
+         * This is the one place a store's address enters an email, so it is the
+         * one place the check has to happen. It matters more here than in the
+         * storefront footer: a footer is corrected by editing the setting, and
+         * an email is not — `deliverEmail` keeps the rendered body so a failed
+         * send can be replayed, so a published address survives in the
+         * notifications table and in every inbox it already reached.
+         */
+        storeEmail: (await isStaffLoginEmail(this.prisma, tenantId, store.email))
+          ? null
+          : store.email,
         // Validated by the template layer too; sent as-is here so a bad stored
         // value is corrected in exactly one place.
         brandColor: store.theme?.primaryColor ?? BRAND_DEFAULTS.PRIMARY,

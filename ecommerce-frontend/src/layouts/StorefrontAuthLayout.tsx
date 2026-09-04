@@ -27,14 +27,24 @@ export function StorefrontAuthLayout() {
     <div className="flex h-[100dvh] flex-col overflow-hidden">
       <Toaster />
 
-      <header className="flex shrink-0 items-center justify-between gap-4 px-4 py-4 sm:px-8 sm:py-5">
+      {/*
+        The logo is capped here rather than following the store's setting.
+
+        That ladder is tuned for the storefront, where the header is free to
+        grow to fit it. On this screen the viewport is the budget — the form
+        below has to fit inside what is left — so a store set to "Large" would
+        spend 72px of a 720px laptop on its own logo and push the register
+        form's submit button off the bottom. The middle step is still
+        unmistakably the brand.
+      */}
+      <header className="flex shrink-0 items-center justify-between gap-4 px-4 py-3 sm:px-8 sm:py-4">
         <Link to="/" className="flex min-w-0 items-center">
           {store.theme.logoUrl ? (
             <img
               src={store.theme.logoUrl}
               alt={store.name}
               className={`w-auto max-w-[10rem] object-contain object-left sm:max-w-[13rem] ${
-                LOGO_HEIGHT[store.theme.logoSize] ?? LOGO_HEIGHT.md
+                store.theme.logoSize === 'sm' ? LOGO_HEIGHT.sm : LOGO_HEIGHT.md
               }`}
             />
           ) : (

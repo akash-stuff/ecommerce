@@ -1,4 +1,5 @@
 import { lazy, Suspense } from 'react';
+import { LoadingPage } from '@/components/Spinner';
 import { createBrowserRouter, Navigate } from 'react-router-dom';
 import { RequireAuth } from './guards';
 import { isAdminHost } from '@/config/env';
@@ -51,7 +52,7 @@ const PlatformTemplates = lazy(() => import('@/pages/platform/Templates'));
 const PlatformAudit = lazy(() => import('@/pages/platform/AuditLog'));
 const PlatformNotifications = lazy(() => import('@/pages/platform/Notifications'));
 
-const Loading = () => <div className="p-10 text-sm text-ink-500">Loading…</div>;
+const Loading = () => <LoadingPage />;
 const wrap = (el: JSX.Element) => <Suspense fallback={<Loading />}>{el}</Suspense>;
 
 /**

@@ -339,6 +339,56 @@ describe('escaping, across every template', () => {
 });
 
 /**
+ * A store's public address and the address its staff sign in with are separate
+ * fields that drift into being the same whenever whoever filled the
+ * provisioning form typed one address twice. `NotificationsService.brandFor`
+ * withholds the address when that has happened, and passes null.
+ *
+ * The reason it matters more in an email than on a page: `deliverEmail` stores
+ * the rendered body so a failed send can be replayed, so a published sign-in
+ * address survives in the notifications table and in every inbox it has already
+ * reached, where no settings change can reach it.
+ *
+ * These tests pin the two halves the compiler cannot: that null actually
+ * removes the address, and that removing it does not leave the copy broken.
+ */
+describe('a withheld contact address', () => {
+  const withheld: EmailBrand = { ...brand, storeEmail: null };
+
+  it('prints no address anywhere when there is none to print', () => {
+    for (const { name, mail } of renderAll(withheld)) {
+      // The whole local-part-and-domain, not just the domain: the storefront
+      // URL legitimately contains "northwind.test".
+      expect(`${name}: ${mail.html}`).not.toContain('help@northwind.test');
+      expect(`${name}: ${mail.text}`).not.toContain('help@northwind.test');
+    }
+  });
+
+  it('leaves whole sentences behind, not a dangling "write to ."', () => {
+    for (const { name, mail } of renderAll(withheld)) {
+      expect(`${name}: ${mail.text}`).not.toMatch(/write to\s*[.·]/);
+      expect(`${name}: ${mail.text}`).not.toMatch(/·\s*$/m);
+      expect(`${name}: ${mail.html}`).not.toContain('&middot; </td>');
+    }
+  });
+
+  it('still offers a way back to the shop', () => {
+    // Losing the address must not leave a receipt with no route to the seller:
+    // "reply to this email" reaches SMTP_FROM, which is usually a noreply.
+    const { mail } = renderAll(withheld).find((m) => m.name === 'orderConfirmation')!;
+    expect(mail.text).toContain('https://northwind.test');
+    expect(mail.html).toContain('https://northwind.test');
+  });
+
+  it('prints the address when it is safe to', () => {
+    // The guard must not be so keen that an ordinary hello@ never appears.
+    for (const { name, mail } of renderAll(brand)) {
+      expect(`${name}: ${mail.html}`).toContain('help@northwind.test');
+    }
+  });
+});
+
+/**
  * The discipline the dark palette depends on, which no compiler enforces: a
  * media query cannot repaint a cell it does not select, so every neutral
  * surface must carry its role class next to its `bgcolor`. Miss one and that

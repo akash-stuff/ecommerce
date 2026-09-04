@@ -38,7 +38,20 @@ import {
 /** Everything a template needs to know about the store it is sent on behalf of. */
 export interface EmailBrand {
   storeName: string;
-  storeEmail: string;
+  /**
+   * The address a shopper may write to, or null when there is none to publish.
+   *
+   * Null is not "missing" — it is a decision. The address on file is withheld
+   * when it turns out to be one someone signs in to the store with, because an
+   * email body is the worst possible place to print one: `deliverEmail` stores
+   * the rendered body so a failed send can be replayed, so the address outlives
+   * the send in a database column *and* sits in every recipient's inbox
+   * forever. See `isStaffLoginEmail`.
+   *
+   * Nullable rather than defaulted to '' so that every render site has to say
+   * what it does without one, instead of quietly printing "Store &middot; ".
+   */
+  storeEmail: string | null;
   /** Validated on the way in; `safeHex` guarantees six digits by the time it is used. */
   brandColor: string;
   logoUrl: string | null;
@@ -311,13 +324,29 @@ function header(brand: EmailBrand): string {
   );
 }
 
+/**
+ * How to reach the shop, for the end of a signature. Null when there is no way
+ * worth printing.
+ *
+ * The storefront stands in for a withheld address. Dropping the tail entirely
+ * would be tidier and worse: "reply to this email" reaches SMTP_FROM, which on
+ * most installs is a noreply, so with nothing here a receipt offers a shopper
+ * no route back to the shop at all.
+ */
+export function contactTail(brand: EmailBrand): string | null {
+  return brand.storeEmail ?? brand.storefrontUrl ?? null;
+}
+
 /** The quiet line under the card. On the page, not in it. */
 function footer(brand: EmailBrand, extraHtml = ''): string {
+  const tail = contactTail(brand);
+
   return (
     `<table role="presentation" width="${CARD_WIDTH}" cellpadding="0" cellspacing="0" border="0" align="center" style="width:100%;max-width:${CARD_WIDTH}px;border-collapse:collapse;">` +
     `<tr><td class="sm-px e-muted" align="center" style="padding:20px ${GUTTER}px 0;${text(12, 20, 400, INK.MUTED)}">` +
     (extraHtml ? `${extraHtml}<br>` : '') +
-    `${escapeHtml(brand.storeName)} &middot; ${escapeHtml(brand.storeEmail)}` +
+    `${escapeHtml(brand.storeName)}` +
+    (tail ? ` &middot; ${escapeHtml(tail)}` : '') +
     `</td></tr></table>`
   );
 }
